@@ -74,10 +74,75 @@ public class Player implements pppp.sim.Player {
     }
 
     private void updateCellWeights(Point[][] pipers, boolean[][] pipers_played, Point[] rats) {
+    	// for now ignore influence of other players
     	for(Point rat : rats) {
     		Cell cell = getCell(rat);
     		if(cell != null) cell.weight++;
     	}
+    }
+    
+    void determinePiperDests(Point[][] pipers, boolean[][] pipers_played, Point[] rats, Move[] moves) {
+    	// We're ignoring other inputs for now, just considering the rats and the instance variable 'grid'
+    	ArrayList<Cell> cells = new ArrayList<Cell>();
+    	for(Cell[] row : grid)
+    		for(Cell cell : row)
+    			cells.add(cell);
+    	cells.sort(null);
+    	int n_rats = 0;
+    	for(Cell cell : cells)
+    		n_rats += cell.weight;
+    	int n_pipers = pipers[id].length;
+    	ArrayList<Integer> unassigned_pipers = new ArrayList<Integer>();
+    	for(int i = 0; i < n_pipers; ++i) unassigned_pipers.add(i);
+    	for(int i = 0; i < cells.size(); ++i) {
+    		// Probably need to reweight/increase this artificially too
+    		int n_pipers_to_i = n_pipers*cells.get(i).weight/n_rats;
+    		if(n_pipers_to_i == 0 || unassigned_pipers.size() == 0 || cells.get(i).weight <= 1) break;
+    		
+    		// Calculate distances of unassigned pipers to the points
+        	double[] distances = new double[unassigned_pipers.size()];
+        	for(int j = 0; j < distances.length; ++j) {
+        		distances[j] = distance(cells.get(i).center, pipers[id][unassigned_pipers.get(j)]);
+        	}
+        	double nth_smallest = quickSelect(distances, n_pipers_to_i);
+			// Send pipers towards cell i
+        	for(int j = 0; j < distances.length; ++j)
+        		if(distances[j] <= nth_smallest) {
+        			// I'm abstracting away many details by using the current structure the TA gave for
+        			// go to door -> go to location (he used random) -> back to door -> thru door -> repeat
+        			// Simply updating random_pos here.
+        			Integer piper = unassigned_pipers.get(j);
+        			random_pos[piper] = cells.get(i).center;
+        			unassigned_pipers.remove((Integer) piper);
+        		}
+    	}
+    	// Possible (likely) in the case of few rats/sparse map that we will have ONLY unassigned pipers
+    	// I'm also expecting a small number of unassigned pipers dense maps.
+    	if(unassigned_pipers.size() > 0) {
+    		//TODO what to do with unassigned pipers, especially in sparse maps (like the example).
+    		// I'm thinking find rats closest to base and send closest piper to it?
+    	}
+    }
+    
+    // returns an array of the n closest unassigned pipers to the cell. should be part of determinePiperDests,
+    // broken out for simplicity
+    private ArrayList<Integer> getNClosest(ArrayList<Integer> unassigned_pipers, Point[] piper_locs, Cell cell, int n) {
+    	ArrayList<Integer> n_closest = new ArrayList<Integer>();
+    	double[] distances = new double[unassigned_pipers.size()];
+    	for(int j = 0; j < distances.length; ++j) {
+    		distances[j] = distance(cell.center, piper_locs[unassigned_pipers.get(j)]);
+    	}
+    	double nth_smallest = quickSelect(distances, n);
+    	for(int j = 0; j < distances.length; ++j)
+    		if(distances[j] <= nth_smallest)
+    			n_closest.add(unassigned_pipers.get(j));
+    	return n_closest;
+    }
+    
+    static double distance(Point a, Point b) {
+    	double x_dif = a.x - b.x;
+		double y_dif = a.y - b.y;
+		return Math.sqrt(x_dif*x_dif + y_dif*y_dif);
     }
     
     private Cell getCell(Point rat) {
@@ -101,6 +166,7 @@ public class Player implements pppp.sim.Player {
             Move[] moves
     ) {
     	updateCellWeights(pipers, pipers_played, rats);
+    	
         for (int p = 0; p != pipers[id].length; ++p) {
             Point src = pipers[id][p];
             Point dst = pos[p][pos_index[p]];
@@ -125,10 +191,60 @@ public class Player implements pppp.sim.Player {
             moves[p] = move(src, dst, pos_index[p] > 1);
         }
     }
+    
+    // Quickselect from internet
+    public static double quickSelect(double[] input_arr, int k) {
+    	if (input_arr == null || input_arr.length <= k)
+    		throw new Error();
+    	
+    	// copy to new array
+    	double[] arr = new double[input_arr.length];
+    	for(int i = 0; i < arr.length; ++i)
+    		arr[i] = input_arr[i];
+
+    	int from = 0, to = arr.length - 1;
+
+    	// if from == to we reached the kth element
+    	while (from < to) {
+    		int r = from, w = to;
+    		double mid = arr[(r + w) / 2];
+
+    		// stop if the reader and writer meets
+    		while (r < w) {
+
+    			if (arr[r] >= mid) { // put the large values at the end
+    				double tmp = arr[w];
+    				arr[w] = arr[r];
+    				arr[r] = tmp;
+    				w--;
+    			} else { // the value is smaller than the pivot, skip
+    				r++;
+    			}
+    		}
+
+    		// if we stepped up (r++) we need to step one down
+    		if (arr[r] > mid)
+    			r--;
+
+    		// the r pointer is on the end of the first k elements
+    		if (k <= r) {
+    			to = r;
+    		} else {
+    			from = r + 1;
+    		}
+    	}
+
+    	return arr[k];
+    }
 }
 
-class Cell {
+class Cell implements Comparable<Cell> {
 	Point topleft;
+	Point center;
 	int length, width;
-	double weight;
+	int weight;
+	
+	public int compareTo(Cell other) {
+		return Integer.compare(weight, other.weight);
+	}
 }
