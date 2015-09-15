@@ -81,7 +81,7 @@ public class Player implements pppp.sim.Player {
     	}
     }
     
-    void determinePiperDests(Point[][] pipers, boolean[][] pipers_played, Point[] rats, Move[] moves) {
+    void determinePiperDests(Point[][] pipers, boolean[][] pipers_played, Point[] rats) {
     	// We're ignoring other inputs for now, just considering the rats and the instance variable 'grid'
     	ArrayList<Cell> cells = new ArrayList<Cell>();
     	for(Cell[] row : grid)
@@ -124,21 +124,6 @@ public class Player implements pppp.sim.Player {
     	}
     }
     
-    // returns an array of the n closest unassigned pipers to the cell. should be part of determinePiperDests,
-    // broken out for simplicity
-    private ArrayList<Integer> getNClosest(ArrayList<Integer> unassigned_pipers, Point[] piper_locs, Cell cell, int n) {
-    	ArrayList<Integer> n_closest = new ArrayList<Integer>();
-    	double[] distances = new double[unassigned_pipers.size()];
-    	for(int j = 0; j < distances.length; ++j) {
-    		distances[j] = distance(cell.center, piper_locs[unassigned_pipers.get(j)]);
-    	}
-    	double nth_smallest = quickSelect(distances, n);
-    	for(int j = 0; j < distances.length; ++j)
-    		if(distances[j] <= nth_smallest)
-    			n_closest.add(unassigned_pipers.get(j));
-    	return n_closest;
-    }
-    
     static double distance(Point a, Point b) {
     	double x_dif = a.x - b.x;
 		double y_dif = a.y - b.y;
@@ -166,6 +151,7 @@ public class Player implements pppp.sim.Player {
             Move[] moves
     ) {
     	updateCellWeights(pipers, pipers_played, rats);
+    	determinePiperDests(pipers, pipers_played, rats);
     	
         for (int p = 0; p != pipers[id].length; ++p) {
             Point src = pipers[id][p];
