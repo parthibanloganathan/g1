@@ -97,8 +97,7 @@ public class Player implements pppp.sim.Player {
     }
 
     void determinePiperDests(
-            Point[][] pipers, boolean[][] pipers_played, Point[] rats,
-    ) {
+            Point[][] pipers, boolean[][] pipers_played, Point[] rats) {
         // We're ignoring other inputs for now, just considering the
         // rats and the instance variable 'grid'
         ArrayList<Cell> cells = new ArrayList<Cell>();
