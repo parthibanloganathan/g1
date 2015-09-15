@@ -190,19 +190,35 @@ public class Player implements pppp.sim.Player {
         updateCellWeights(pipers, pipers_played, rats);
         determinePiperDests(pipers, pipers_played, rats);
 
-        for (int p = 0; p != pipers[id].length; ++p) {
-            Point src = pipers[id][p];
-            Point dst = pos[p][pos_index[p]];
+        Point[] ourPipers = pipers[id];
+        int numPipers = ourPipers.length;
+        for (int p = 0; p != numPipers; ++p) {
+            Point src = ourPipers[p];
+            Point piperMoveList = pos[p];
+            int moveNum = pos_index[p];
+            // Get destination from list of moves the piper should make.
+            Point dst = piperMoveList[moveNum];
+
             // if null then get random position
-            if (dst == null) dst = random_pos[p];
-            // if position is reached
-            if (Math.abs(src.x - dst.x) < 0.000001 &&
-                    Math.abs(src.y - dst.y) < 0.000001) {
+            if (dst == null) {
+                dst = random_pos[p];
+            }
+
+            // if position is reached, ie. distance between src and destination is within some epsilon
+            const double EPSILON = 0.000001
+            if (Math.abs(src.x - dst.x) < EPSILON &&
+                    Math.abs(src.y - dst.y) < EPSILON) {
                 // discard random position
-                if (dst == random_pos[p]) random_pos[p] = null;
+                if (dst == random_pos[p]) {
+                    random_pos[p] = null;
+                }
                 // get next position
-                if (++pos_index[p] == pos[p].length) pos_index[p] = 0;
-                dst = pos[p][pos_index[p]];
+                // If we reach end of the moves list, reset
+                if (++pos_index[p] == piperMoveList.length) {
+                    pos_index[p] = 0;
+                }
+                moveNum = pos_index[p];
+                dst = piperMoveList[moveNum];
                 // generate a new position if random
                 if (dst == null) {
                     double x = (gen.nextDouble() - 0.5) * side * 0.9;
