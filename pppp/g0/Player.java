@@ -14,6 +14,7 @@ public class Player implements pppp.sim.Player {
     private Point[][] pos = null;
     private Point[] random_pos = null;
     private Random gen = new Random();
+    private Cell[][] grid = null;
 
     // create move towards specified destination
     private static Move move(Point src, Point dst, boolean play) {
@@ -72,6 +73,26 @@ public class Player implements pppp.sim.Player {
         }
     }
 
+    private void updateCellWeights(Point[][] pipers, boolean[][] pipers_played, Point[] rats) {
+    	for(Point rat : rats) {
+    		Cell cell = getCell(rat);
+    		if(cell != null) cell.weight++;
+    	}
+    }
+    
+    private Cell getCell(Point rat) {
+    	for(Cell[] row : grid) {
+    		for(Cell cell : row) {
+    			if(cell.topleft.x <= rat.x &&
+    					cell.topleft.x+cell.width >= rat.x &&
+    					cell.topleft.y <= rat.y &&
+    					cell.topleft.y+cell.length >= rat.y)
+    				return cell;
+    		}
+    	}
+    	return null;
+    }
+    
     // return next locations on last argument
     public void play(
             Point[][] pipers,
@@ -79,6 +100,7 @@ public class Player implements pppp.sim.Player {
             Point[] rats,
             Move[] moves
     ) {
+    	updateCellWeights(pipers, pipers_played, rats);
         for (int p = 0; p != pipers[id].length; ++p) {
             Point src = pipers[id][p];
             Point dst = pos[p][pos_index[p]];
@@ -103,4 +125,10 @@ public class Player implements pppp.sim.Player {
             moves[p] = move(src, dst, pos_index[p] > 1);
         }
     }
+}
+
+class Cell {
+	Point topleft;
+	int length, width;
+	double weight;
 }
