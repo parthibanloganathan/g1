@@ -133,7 +133,7 @@ public class Player implements pppp.sim.Player {
         double avg_weight = rats.length/cells.size();
         while(cellIter.hasNext()) {
         	Cell cell = cellIter.next();
-        	if(cell.weight <= 2*avg_weight || distance(cell.center, gate) < 20) {
+        	if(cell.weight <= 2*avg_weight || PPPPUtils.distance(cell.center, gate) < 20) {
         		cellIter.remove();
         		continue;
         	}
@@ -181,21 +181,21 @@ public class Player implements pppp.sim.Player {
         	int n_unassigned = unassigned_pipers.size();
         	double[] rat_dist_gate = new double[rats.length];
         	for(int i = 0; i < rat_dist_gate.length; ++i) {
-        		rat_dist_gate[i] = distance(rats[i], gate);
+        		rat_dist_gate[i] = PPPPUtils.distance(rats[i], gate);
         		// We need to ignore any rats that are being brought in at the moment
         		if(rat_dist_gate[i] <= side/2) rat_dist_gate[i] = (side - rat_dist_gate[i])/2;
         	}
         	// Ensure that there are at least as many rats as pipers
         	// if not first only assign 1 piper to each rat first
         	// Then we assign the rest of the pipers to the closest rat
-        	double nth_closest_rat = quickSelect(rat_dist_gate, Math.min(n_unassigned,rat_dist_gate.length));
+        	double nth_closest_rat = PPPPUtils.quickSelect(rat_dist_gate, Math.min(n_unassigned,rat_dist_gate.length));
         	for(int i = 0; i < rat_dist_gate.length; ++i)
         		if(rat_dist_gate[i] <= nth_closest_rat) {
         			Integer closest_piper = null;
         			double dist_closest = Double.MAX_VALUE;
         			for(Integer piper : unassigned_pipers) {
-        				if(distance(pipers[id][piper], rats[i]) <= dist_closest) {
-        					dist_closest = distance(pipers[id][piper], rats[i]);
+        				if(PPPPUtils.distance(pipers[id][piper], rats[i]) <= dist_closest) {
+        					dist_closest = PPPPUtils.distance(pipers[id][piper], rats[i]);
         					closest_piper = Integer.valueOf(piper);
         				}
         			}
@@ -212,7 +212,7 @@ public class Player implements pppp.sim.Player {
         			Point closest_rat_pos = null;
         			double closest_rat_dist = Double.MAX_VALUE;
         			for(int i = 0; i < rats.length; ++i) {
-        				double dist = distance(pipers[id][piper], rats[i]);
+        				double dist = PPPPUtils.distance(pipers[id][piper], rats[i]);
         				if(dist < closest_rat_dist) {
         					closest_rat_dist = dist;
         					closest_rat_pos = rats[i];
@@ -228,7 +228,7 @@ public class Player implements pppp.sim.Player {
     static int n_rats_near(Point piper, Point[] rats) {
     	int n = 0;
     	for(int i = 0; i < rats.length; ++i)
-    		n += distance(piper,rats[i]) <= 10 ? 1 : 0;
+    		n += PPPPUtils.distance(piper,rats[i]) <= 10 ? 1 : 0;
     	return n;
     }
 
@@ -256,8 +256,9 @@ public class Player implements pppp.sim.Player {
         Point[] ourPipers = pipers[id];
         int numPipers = ourPipers.length;
         for (int p = 0; p != numPipers; ++p) {
+        	if(pos_index[p] == 2 && n_rats_near(ourPipers[p], rats) == 0) --pos_index[p];
             Point src = ourPipers[p];
-            Point piperMoveList = pos[p];
+            Point[] piperMoveList = pos[p];
             int moveNum = pos_index[p];
             // Get destination from list of moves the piper should make.
             Point dst = piperMoveList[moveNum];
@@ -268,11 +269,11 @@ public class Player implements pppp.sim.Player {
             }
 
             // if position is reached, ie. distance between src and destination is within some epsilon
-            const double GATE_EPSILON = 0.000001
-            const double RAT_EPSILON = 2
+            double GATE_EPSILON = 0.000001;
+            double RAT_EPSILON = 2;
             if ((Math.abs(src.x - dst.x) < GATE_EPSILON &&
                     Math.abs(src.y - dst.y) < GATE_EPSILON) || 
-                    (distance(src,dst) < RAT_EPSILON && moveNum == 1)) {
+                    (PPPPUtils.distance(src,dst) < RAT_EPSILON && moveNum == 1)) {
                 // get next position
                 // If we reach end of the moves list, reset
                 if (++pos_index[p] == piperMoveList.length) {
