@@ -130,6 +130,9 @@ public class Player implements pppp.sim.Player {
         cells.sort(null);
         int n_rats = 0;
         Iterator<Cell> cellIter = cells.iterator();
+        
+        // What we're going to do is only consider cells with over twice the average weight
+        // that are not literally at our gate (this would basically lock pipers into base)
         double avg_weight = rats.length/cells.size();
         while(cellIter.hasNext()) {
         	Cell cell = cellIter.next();
@@ -143,22 +146,28 @@ public class Player implements pppp.sim.Player {
             n_rats += cell.weight;
         int n_pipers = pipers[id].length;
         ArrayList<Integer> unassigned_pipers = new ArrayList<Integer>();
+        // Consider the "active duty" pipers that are not currently in base
+        // They are either moving towards rats or herding them back (in this case they
+        // change tactics rarely)
         for (int i = 0; i < n_pipers; ++i) if(pos_index[i] == 1 || pos_index[i] == 2) unassigned_pipers.add(i);
         for (int i = 0; i < cells.size(); ++i) {
             if (n_rats == 0 || unassigned_pipers.size() == 0 ||
                     cells.get(i).weight <= 1)
                 break;
             // Probably need to reweight/increase this artificially too
+            // Temporarily changing the formula to only consider cells with atleast twice average
+            // weight seems to have fixed this
             int n_pipers_to_i = n_pipers * cells.get(i).weight / n_rats;
             if(n_pipers_to_i == 0) break;
 
             double[] distances = new double[pipers[id].length];
-//            double[] distances = new double[unassigned_pipers.size()];
             for (int j = 0; j < distances.length; ++j) {
+            	// If the piper j is busy/assigned, set dist to MAX
                 distances[j] = unassigned_pipers.contains((Integer) j) ?
                 		PPPPUtils.distance(cells.get(i).center, pipers[id][j])
                 		: Double.MAX_VALUE;
             }
+            // Get the n closest pipers to the cell i.
             double nth_smallest = PPPPUtils.quickSelect(distances, n_pipers_to_i);
             // Send pipers towards cell i
             for (int j = 0; j < distances.length; ++j)
@@ -183,7 +192,13 @@ public class Player implements pppp.sim.Player {
         	for(int i = 0; i < rat_dist_gate.length; ++i) {
         		rat_dist_gate[i] = PPPPUtils.distance(rats[i], gate);
         		// We need to ignore any rats that are being brought in at the moment
+        		// Best performance seems to be obtained by going for rats that
+        		// are not TOO close (these are very hard for others to steal) and not TOO far
+        		// We go for hotly contested ones at a reasonable distance
+
+        		// In effect, rat_dist_gate acts as a "weighting" and this can definitely be refined
         		if(rat_dist_gate[i] <= side/2) rat_dist_gate[i] = (side - rat_dist_gate[i])/2;
+        		
         	}
         	// Ensure that there are at least as many rats as pipers
         	// if not first only assign 1 piper to each rat first
@@ -193,17 +208,20 @@ public class Player implements pppp.sim.Player {
         		if(rat_dist_gate[i] <= nth_closest_rat) {
         			Integer closest_piper = null;
         			double dist_closest = Double.MAX_VALUE;
+        			// From all the unassigned pipers, send the closest one towards this rat
         			for(Integer piper : unassigned_pipers) {
         				if(PPPPUtils.distance(pipers[id][piper], rats[i]) <= dist_closest) {
         					dist_closest = PPPPUtils.distance(pipers[id][piper], rats[i]);
         					closest_piper = Integer.valueOf(piper);
         				}
         			}
+        			// Piper is now assigned, remove from unassigned list
 					unassigned_pipers.remove((Integer) closest_piper);
 					random_pos[closest_piper] = rats[i];
 					if(unassigned_pipers.size() == 0) return;
         		}
         	// In case we had more pipers than rats, send to closest rat
+        	// I think send to random rat might be better here?
         	if(unassigned_pipers.size() > 0) {
         		if(rats.length == 0) return;
         		Iterator<Integer> iter = unassigned_pipers.iterator();
@@ -225,6 +243,7 @@ public class Player implements pppp.sim.Player {
         }
     }
     
+    // Yields the number of rats within range
     static int n_rats_near(Point piper, Point[] rats) {
     	int n = 0;
     	for(int i = 0; i < rats.length; ++i)
@@ -267,10 +286,12 @@ public class Player implements pppp.sim.Player {
             if (dst == null) {
                 dst = random_pos[p];
             }
-
-            // if position is reached, ie. distance between src and destination is within some epsilon
+            
+            // Different epsilons for gate and rat, since we dont need to be too close in the case of rats
+            // But we need high precision to ensure we get through the gate properly with the rats
             double GATE_EPSILON = 0.000001;
             double RAT_EPSILON = 2;
+            // if position is reached, ie. distance between src and destination is within some epsilon
             if ((Math.abs(src.x - dst.x) < GATE_EPSILON &&
                     Math.abs(src.y - dst.y) < GATE_EPSILON) || 
                     (PPPPUtils.distance(src,dst) < RAT_EPSILON && moveNum == 1)) {
