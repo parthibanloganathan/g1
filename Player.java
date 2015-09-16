@@ -15,8 +15,8 @@ public class Player implements pppp.sim.Player {
     private Point[] random_pos = null;
     private Random gen = new Random();
 
-    // Divide the board into a grid of cells. Each cell in the grid is evaluated as a potential destination
-    // for a piper.
+    // Divide the board into a grid of cells. Each cell in the grid is
+    // evaluated as a potential destination for a piper.
     private Cell[][] grid = null;
     private Point gate = null;
 
@@ -87,12 +87,19 @@ public class Player implements pppp.sim.Player {
     private Cell[][] createGrid(int side, int slices) {
         // The board consists of size^2 number of square cells.
         float size = (float) side / (float) slices;
+        float half = (side / 2);
         Cell[][] grid = new Cell[slices][slices];
         for (int i = 0; i < slices; i++) {
             for (int j = 0; j < slices; j++) {
                 grid[i][j] = new Cell(
-                        new Point(i * size, j * size), // top-left corner
-                        new Point((i + 0.5) * size, (j + 0.5) * size), // center
+                        new Point(  // X, Y - bottom-left corner
+                                (i * size) - half,
+                                (j * size) - half
+                        ),
+                        new Point(  // X, Y - center
+                                (i + 0.5) * size - half,
+                                (j + 0.5) * size - half
+                        ),
                         size, 0
                 );
             }
@@ -125,14 +132,14 @@ public class Player implements pppp.sim.Player {
         // rats and the instance variable 'grid'
         ArrayList<Cell> cells = new ArrayList<Cell>();
         for (Cell[] row : grid)
-            for (Cell cell : row)
-                cells.add(cell);
+            Collections.addAll(cells, row);
         cells.sort(null);
         int n_rats = 0;
         Iterator<Cell> cellIter = cells.iterator();
         
-        // What we're going to do is only consider cells with over twice the average weight
-        // that are not literally at our gate (this would basically lock pipers into base)
+        // What we're going to do is only consider cells with over twice the
+        // average weight that are not literally at our gate (this would
+        // basically lock pipers into base)
         double avg_weight = rats.length/cells.size();
         while(cellIter.hasNext()) {
         	Cell cell = cellIter.next();
@@ -144,28 +151,32 @@ public class Player implements pppp.sim.Player {
         }
         for (Cell cell : cells)
             n_rats += cell.weight;
+
         int n_pipers = pipers[id].length;
         ArrayList<Integer> unassigned_pipers = new ArrayList<Integer>();
         // Consider the "active duty" pipers that are not currently in base
-        // They are either moving towards rats or herding them back (in this case they
-        // change tactics rarely)
-        for (int i = 0; i < n_pipers; ++i) if(pos_index[i] == 1 || pos_index[i] == 2) unassigned_pipers.add(i);
-        for (int i = 0; i < cells.size(); ++i) {
-            if (n_rats == 0 || unassigned_pipers.size() == 0 ||
-                    cells.get(i).weight <= 1)
+        // They are either moving towards rats or herding them back (in this
+        // case they change tactics rarely)
+        for (int i = 0; i < n_pipers; ++i)
+            if(pos_index[i] == 1 || pos_index[i] == 2)
+                unassigned_pipers.add(i);
+
+        for (Cell cell : cells) {
+            if (n_rats == 0 || unassigned_pipers.size() == 0 || cell.weight <= 1)
                 break;
             // Probably need to reweight/increase this artificially too
-            // Temporarily changing the formula to only consider cells with atleast twice average
-            // weight seems to have fixed this
-            int n_pipers_to_i = n_pipers * cells.get(i).weight / n_rats;
-            if(n_pipers_to_i == 0) break;
+            // Temporarily changing the formula to only consider cells with
+            // atleast twice average weight seems to have fixed this
+            int n_pipers_to_i = n_pipers * cell.weight / n_rats;
+            if (n_pipers_to_i == 0)
+                break;
 
             double[] distances = new double[pipers[id].length];
             for (int j = 0; j < distances.length; ++j) {
-            	// If the piper j is busy/assigned, set dist to MAX
-                distances[j] = unassigned_pipers.contains((Integer) j) ?
-                		PPPPUtils.distance(cells.get(i).center, pipers[id][j])
-                		: Double.MAX_VALUE;
+                // If the piper j is busy/assigned, set dist to MAX
+                distances[j] = unassigned_pipers.contains(j) ?
+                        PPPPUtils.distance(cell.center, pipers[id][j])
+                        : Double.MAX_VALUE;
             }
             // Get the n closest pipers to the cell i.
             double nth_smallest = PPPPUtils.quickSelect(distances, n_pipers_to_i);
@@ -177,12 +188,14 @@ public class Player implements pppp.sim.Player {
                     // go to location (he used random) -> back to door
                     // -> thru door -> repeat Simply updating random_pos here.
                     Integer piper = j;
-                    random_pos[piper] = cells.get(i).center;
-                    unassigned_pipers.remove((Integer) piper);
-                    if(distances[piper] > 20 && n_rats_near(pipers[id][piper],rats) < 3) pos_index[piper] = 1;
+                    random_pos[piper] = cell.center;
+                    unassigned_pipers.remove(piper);
+                    if (distances[piper] > 20 && n_rats_near(pipers[id][piper], rats) < 3)
+                        pos_index[piper] = 1;
                     distances[piper] = Double.MAX_VALUE;
                 }
         }
+
         // Possible (likely) in the case of few rats/sparse map that we
         // will have ONLY unassigned pipers. I'm also expecting a small
         // number of unassigned pipers dense maps.
@@ -212,11 +225,11 @@ public class Player implements pppp.sim.Player {
         			for(Integer piper : unassigned_pipers) {
         				if(PPPPUtils.distance(pipers[id][piper], rats[i]) <= dist_closest) {
         					dist_closest = PPPPUtils.distance(pipers[id][piper], rats[i]);
-        					closest_piper = Integer.valueOf(piper);
+        					closest_piper = piper;
         				}
         			}
         			// Piper is now assigned, remove from unassigned list
-					unassigned_pipers.remove((Integer) closest_piper);
+					unassigned_pipers.remove(closest_piper);
 					random_pos[closest_piper] = rats[i];
 					if(unassigned_pipers.size() == 0) return;
         		}
@@ -229,13 +242,13 @@ public class Player implements pppp.sim.Player {
         			Integer piper = iter.next();
         			Point closest_rat_pos = null;
         			double closest_rat_dist = Double.MAX_VALUE;
-        			for(int i = 0; i < rats.length; ++i) {
-        				double dist = PPPPUtils.distance(pipers[id][piper], rats[i]);
-        				if(dist < closest_rat_dist) {
-        					closest_rat_dist = dist;
-        					closest_rat_pos = rats[i];
-        				}
-        			}
+                    for (Point rat : rats) {
+                        double dist = PPPPUtils.distance(pipers[id][piper], rat);
+                        if (dist < closest_rat_dist) {
+                            closest_rat_dist = dist;
+                            closest_rat_pos = rat;
+                        }
+                    }
         			random_pos[piper] = closest_rat_pos;
         			iter.remove();
         		}
@@ -246,18 +259,21 @@ public class Player implements pppp.sim.Player {
     // Yields the number of rats within range
     static int n_rats_near(Point piper, Point[] rats) {
     	int n = 0;
-    	for(int i = 0; i < rats.length; ++i)
-    		n += PPPPUtils.distance(piper,rats[i]) <= 10 ? 1 : 0;
+        for (Point rat : rats)
+            n += PPPPUtils.distance(piper, rat) <= 10 ? 1 : 0;
     	return n;
     }
 
     private Cell getCell(Point rat) {
         for (Cell[] row : grid) {
             for (Cell cell : row) {
-                if (cell.corner.x <= rat.x &&
-                        cell.corner.x + cell.size >= rat.x &&
-                        cell.corner.y <= rat.y &&
-                        cell.corner.y + cell.size >= rat.y)
+                double left = cell.corner.x;
+                double bottom = cell.corner.y;
+                double top = cell.corner.y + cell.size;
+                double right = cell.corner.x + cell.size;
+
+                if (rat.y >= bottom && rat.y < top && rat.x >= left &&
+                        rat.x < right)
                     return cell;
             }
         }
