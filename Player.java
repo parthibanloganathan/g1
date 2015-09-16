@@ -117,10 +117,14 @@ public class Player implements pppp.sim.Player {
     private void updateCellWeights(
             Point[][] pipers, boolean[][] pipers_played, Point[] rats
     ) {
-        // for now ignore influence of other players
-    	for(Cell[] row : grid)
-    		for(Cell cell : row)
-    			cell.weight = 0;
+        // Reset cell weights
+    	for(Cell[] row : grid) {
+            for (Cell cell : row) {
+                cell.weight = 0;
+            }
+        }
+
+        // Compute each cell's weight
         for (Point rat : rats) {
             Cell cell = getCell(rat);
             if (cell != null) cell.weight++;
@@ -130,9 +134,12 @@ public class Player implements pppp.sim.Player {
     void determinePiperDests(Point[][] pipers, boolean[][] pipers_played, Point[] rats) {
         // We're ignoring other inputs for now, just considering the
         // rats and the instance variable 'grid'
+
+        // Sort cells by decreasing weights
         ArrayList<Cell> cells = new ArrayList<Cell>();
-        for (Cell[] row : grid)
+        for (Cell[] row : grid) {
             Collections.addAll(cells, row);
+        }
         cells.sort(null);
         int n_rats = 0;
         Iterator<Cell> cellIter = cells.iterator();
@@ -140,17 +147,19 @@ public class Player implements pppp.sim.Player {
         // What we're going to do is only consider cells with over twice the
         // average weight that are not literally at our gate (this would
         // basically lock pipers into base)
-        double avg_weight = rats.length/cells.size();
+        double avg_weight = rats.length/cells.size(); // expected number of rats per cell
         while(cellIter.hasNext()) {
         	Cell cell = cellIter.next();
+            // Discard cells that don't have high weight or are close by
         	if(cell.weight <= 2*avg_weight || PPPPUtils.distance(cell.center, gate) < 20) {
         		cellIter.remove();
         		continue;
         	}
         	n_rats += cell.weight;
         }
-        for (Cell cell : cells)
+        for (Cell cell : cells) {
             n_rats += cell.weight;
+        }
 
         int n_pipers = pipers[id].length;
         ArrayList<Integer> unassigned_pipers = new ArrayList<Integer>();
@@ -255,15 +264,24 @@ public class Player implements pppp.sim.Player {
         	}
         }
     }
-    
-    // Yields the number of rats within range
+
+    /**
+     * Yields the number of rats within range
+     */
     static int n_rats_near(Point piper, Point[] rats) {
-    	int n = 0;
-        for (Point rat : rats)
-            n += PPPPUtils.distance(piper, rat) <= 10 ? 1 : 0;
-    	return n;
+    	int num_rats = 0;
+        const int RANGE = 10;
+        for (Point rat : rats) {
+            n += PPPPUtils.distance(piper, rat) <= RANGE ? 1 : 0;
+        }
+    	return num_rats;
     }
 
+    /**
+     *
+     * @param rat
+     * @return
+     */
     private Cell getCell(Point rat) {
         for (Cell[] row : grid) {
             for (Cell cell : row) {
@@ -273,8 +291,9 @@ public class Player implements pppp.sim.Player {
                 double right = cell.corner.x + cell.size;
 
                 if (rat.y >= bottom && rat.y < top && rat.x >= left &&
-                        rat.x < right)
+                        rat.x < right) {
                     return cell;
+                }
             }
         }
         return null;
