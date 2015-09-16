@@ -14,6 +14,9 @@ public class Player implements pppp.sim.Player {
     private Point[][] pos = null;
     private Point[] random_pos = null;
     private Random gen = new Random();
+
+    // Divide the board into a grid of cells. Each cell in the grid is evaluated as a potential destination
+    // for a piper.
     private Cell[][] grid = null;
     private Point gate = null;
 
@@ -70,23 +73,40 @@ public class Player implements pppp.sim.Player {
             pos_index[p] = 0;
         }
 
+        // Initialize the grid of cells
         this.grid = createGrid(side, side/20);
     }
 
+    /**
+     * Create a grid of square cells each of side length size.
+     *
+     * @param side
+     * @param slices
+     * @return grid of cells
+     */
     private Cell[][] createGrid(int side, int slices) {
+        // The board consists of size^2 number of square cells.
         float size = (float) side / (float) slices;
         Cell[][] grid = new Cell[slices][slices];
         for (int i = 0; i < slices; i++) {
             for (int j = 0; j < slices; j++) {
                 grid[i][j] = new Cell(
-                        new Point(i * size, j * size),
-                        new Point((i + 0.5) * size, (j + 0.5) * size), size, 0
+                        new Point(i * size, j * size), // top-left corner
+                        new Point((i + 0.5) * size, (j + 0.5) * size), // center
+                        size, 0
                 );
             }
         }
         return grid;
     }
 
+    /**
+     * Update the weights of all cells.
+     *
+     * @param pipers
+     * @param pipers_played
+     * @param rats
+     */
     private void updateCellWeights(
             Point[][] pipers, boolean[][] pipers_played, Point[] rats
     ) {
@@ -136,10 +156,10 @@ public class Player implements pppp.sim.Player {
 //            double[] distances = new double[unassigned_pipers.size()];
             for (int j = 0; j < distances.length; ++j) {
                 distances[j] = unassigned_pipers.contains((Integer) j) ?
-                		distance(cells.get(i).center, pipers[id][j])
+                		PPPPUtils.distance(cells.get(i).center, pipers[id][j])
                 		: Double.MAX_VALUE;
             }
-            double nth_smallest = quickSelect(distances, n_pipers_to_i);
+            double nth_smallest = PPPPUtils.quickSelect(distances, n_pipers_to_i);
             // Send pipers towards cell i
             for (int j = 0; j < distances.length; ++j)
                 if (distances[j] <= nth_smallest && distances[j] != Double.MAX_VALUE) {
@@ -212,12 +232,6 @@ public class Player implements pppp.sim.Player {
     	return n;
     }
 
-    static double distance(Point a, Point b) {
-        double x_dif = a.x - b.x;
-        double y_dif = a.y - b.y;
-        return Math.sqrt(x_dif * x_dif + y_dif * y_dif);
-    }
-
     private Cell getCell(Point rat) {
         for (Cell[] row : grid) {
             for (Cell cell : row) {
@@ -239,19 +253,35 @@ public class Player implements pppp.sim.Player {
         updateCellWeights(pipers, pipers_played, rats);
         determinePiperDests(pipers, pipers_played, rats);
 
-        for (int p = 0; p != pipers[id].length; ++p) {
-        	if(pos_index[p] == 2 && n_rats_near(pipers[id][p], rats) < 1) --pos_index[p];
-            Point src = pipers[id][p];
-            Point dst = pos[p][pos_index[p]];
+        Point[] ourPipers = pipers[id];
+        int numPipers = ourPipers.length;
+        for (int p = 0; p != numPipers; ++p) {
+            Point src = ourPipers[p];
+            Point piperMoveList = pos[p];
+            int moveNum = pos_index[p];
+            // Get destination from list of moves the piper should make.
+            Point dst = piperMoveList[moveNum];
+
             // if null then get random position
-            if (dst == null) dst = random_pos[p];
-            // if position is reached
-            if ((Math.abs(src.x - dst.x) < 0.000001 &&
-                    Math.abs(src.y - dst.y) < 0.000001) || 
-                    (distance(src,dst) < 2 && dst == random_pos[p])) {
+            if (dst == null) {
+                dst = random_pos[p];
+            }
+
+            // if position is reached, ie. distance between src and destination is within some epsilon
+            const double EPSILON = 0.000001
+            if (Math.abs(src.x - dst.x) < EPSILON &&
+                    Math.abs(src.y - dst.y) < EPSILON) {
+                // discard random position
+                if (dst == random_pos[p]) {
+                    random_pos[p] = null;
+                }
                 // get next position
-                if (++pos_index[p] == pos[p].length) pos_index[p] = 0;
-                dst = pos[p][pos_index[p]];
+                // If we reach end of the moves list, reset
+                if (++pos_index[p] == piperMoveList.length) {
+                    pos_index[p] = 0;
+                }
+                moveNum = pos_index[p];
+                dst = piperMoveList[moveNum];
                 // generate a new position if random
                 if (dst == null) {
                     double x = (gen.nextDouble() - 0.5) * side * 0.9;
@@ -262,59 +292,5 @@ public class Player implements pppp.sim.Player {
             // get move towards position
             moves[p] = move(src, dst, pos_index[p] > 1);
         }
-    }
-
-    // Quickselect from internet
-    public static double quickSelect(double[] input_arr, int k) {
-        if (input_arr == null)
-            throw new Error();
-        if(input_arr.length == k) {
-        	double max = Double.MIN_VALUE;
-        	for(int i = 0; i < input_arr.length; ++i)
-        		if(max < input_arr[i])
-        			max = input_arr[i];
-        	return max;
-        }
-        if(input_arr.length < k)
-        	throw new Error();
-
-        // copy to new array
-        double[] arr = new double[input_arr.length];
-        for (int i = 0; i < arr.length; ++i)
-            arr[i] = input_arr[i];
-
-        int from = 0, to = arr.length - 1;
-
-        // if from == to we reached the kth element
-        while (from < to) {
-            int r = from, w = to;
-            double mid = arr[(r + w) / 2];
-
-            // stop if the reader and writer meets
-            while (r < w) {
-
-                if (arr[r] >= mid) { // put the large values at the end
-                    double tmp = arr[w];
-                    arr[w] = arr[r];
-                    arr[r] = tmp;
-                    w--;
-                } else { // the value is smaller than the pivot, skip
-                    r++;
-                }
-            }
-
-            // if we stepped up (r++) we need to step one down
-            if (arr[r] > mid)
-                r--;
-
-            // the r pointer is on the end of the first k elements
-            if (k <= r) {
-                to = r;
-            } else {
-                from = r + 1;
-            }
-        }
-
-        return arr[k];
     }
 }
