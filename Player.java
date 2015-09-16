@@ -268,13 +268,11 @@ public class Player implements pppp.sim.Player {
             }
 
             // if position is reached, ie. distance between src and destination is within some epsilon
-            const double EPSILON = 0.000001
-            if (Math.abs(src.x - dst.x) < EPSILON &&
-                    Math.abs(src.y - dst.y) < EPSILON) {
-                // discard random position
-                if (dst == random_pos[p]) {
-                    random_pos[p] = null;
-                }
+            const double GATE_EPSILON = 0.000001
+            const double RAT_EPSILON = 2
+            if ((Math.abs(src.x - dst.x) < GATE_EPSILON &&
+                    Math.abs(src.y - dst.y) < GATE_EPSILON) || 
+                    (distance(src,dst) < RAT_EPSILON && moveNum == 1)) {
                 // get next position
                 // If we reach end of the moves list, reset
                 if (++pos_index[p] == piperMoveList.length) {

@@ -22,7 +22,16 @@ public class PPPPUtils {
      * @return kth largest element
      */
     public static double quickSelect(double[] input_arr, int k) {
-        if (input_arr == null || input_arr.length <= k)
+        if (input_arr == null)
+            throw new Error();
+        if(input_arr.length == k) {
+            double max = Double.MIN_VALUE;
+            for(int i = 0; i < input_arr.length; ++i)
+            if(max < input_arr[i])
+                max = input_arr[i];
+            return max;
+        }
+        if(input_arr.length < k)
             throw new Error();
 
         // copy to new array
