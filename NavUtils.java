@@ -58,13 +58,13 @@ public class NavUtils {
     public static Point transformRelativeToAbsoluteCoordinates(int id, int side, double x, double y) {
         double offset = 0.5 * side; // gate is located at midpoint of side
         if (id == 0) {
-            return new Point(x, offset - y);
+            return new Point(-x, offset - y);
         } else if (id == 1) {
-            return new Point(side - y, offset - x);
+            return new Point(offset - y, x);
         } else if (id == 2) {
-            return new Point(side - x, y + offset);
+            return new Point(x, y + offset);
         } else {
-            return new Point(y + side, x + offset);
+            return new Point(y - offset, -x);
         }
     }
 
