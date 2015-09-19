@@ -10,6 +10,7 @@ public class Player implements pppp.sim.Player {
     // see details below
     private int id = -1;
     private int side = 0;
+
     private int[] pipers_current_order;
     private Random gen = new Random();
     
@@ -26,16 +27,14 @@ public class Player implements pppp.sim.Player {
 
     // Divide the board into a grid of cells. Each cell in the grid is
     // evaluated as a potential destination for a piper.
-    private Cell[][] grid = null;
-    private Point gate = null;
+    private Grid grid;
+    private Point gate;
 
     // create move towards specified destination
 
 
     // specify location that the player will alternate between
-    public void init(
-            int id, int side, long turns, Point[][] pipers, Point[] rats
-    ) {
+    public void init(int id, int side, long turns, Point[][] pipers, Point[] rats) {
         this.id = id;
         this.side = side;
         int numPipers = pipers[id].length;
@@ -53,7 +52,9 @@ public class Player implements pppp.sim.Player {
         }
 
         // Initialize the grid of cells
-        this.grid = createGrid(side, side/20);
+        int cellSize = 20; // side must be multiple of cellSize
+        int slices = side/cellSize;
+        this.grid = new Grid(side, slices);
     }
     
     void updatePiperGoalPosition(int piperNum, Point newGoal, boolean playMusic) {
@@ -71,64 +72,10 @@ public class Player implements pppp.sim.Player {
     PointWrapper getPiperDestination(int piperNum) {
     	return queuedMoves[piperNum].get(pipers_current_order[piperNum]);
     }
-
-    /**
-     * Create a grid of square cells each of side length size.
-     *
-     * @param side
-     * @param slices
-     * @return grid of cells
-     */
-    private Cell[][] createGrid(int side, int slices) {
-        // The board consists of size^2 number of square cells.
-        float size = (float) side / (float) slices;
-        float half = (side / 2);
-        Cell[][] grid = new Cell[slices][slices];
-        for (int i = 0; i < slices; i++) {
-            for (int j = 0; j < slices; j++) {
-                grid[i][j] = new Cell(
-                        new Point(  // X, Y - bottom-left corner
-                                (i * size) - half,
-                                (j * size) - half
-                        ),
-                        new Point(  // X, Y - center
-                                (i + 0.5) * size - half,
-                                (j + 0.5) * size - half
-                        ),
-                        size, 0
-                );
-            }
-        }
-        return grid;
-    }
-
-    /**
-     * Update the weights of all cells.
-     *
-     * @param pipers
-     * @param pipers_played
-     * @param rats
-     */
-    private void updateCellWeights(
-            Point[][] pipers, boolean[][] pipers_played, Point[] rats
-    ) {
-        // Reset cell weights
-    	for(Cell[] row : grid) {
-            for (Cell cell : row) {
-                cell.weight = 0;
-            }
-        }
-
-        // Compute each cell's weight
-        for (Point rat : rats) {
-            Cell cell = getCell(rat);
-            if (cell != null) cell.weight++;
-        }
-    }
     
     ArrayList<Cell> getImportantCells(Cell[][] grid, Point[] rats) {
         ArrayList<Cell> cells = new ArrayList<Cell>();
-        for (Cell[] row : grid) {
+        for (Cell[] row : this.grid.grid) {
             Collections.addAll(cells, row);
         }
         cells.sort(null);
@@ -295,21 +242,23 @@ public class Player implements pppp.sim.Player {
     }
 
     /**
-     * Yields the number of rats within range
+     * Number of rats within specified range from the piper.
+     * @param piper
+     * @param rats
+     * @param range
      */
-    static int n_rats_near(Point piper, Point[] rats) {
-    	int num_rats = 0;
-        int RANGE = 10;
+    private static int numRatsInRange(Point piper, Point[] rats, int range) {
+    	int numRats = 0;
         for (Point rat : rats) {
-            num_rats += Utils.distance(piper, rat) <= RANGE ? 1 : 0;
+            numRats += Utils.distance(piper, rat) <= range ? 1 : 0;
         }
-    	return num_rats;
+    	return numRats;
     }
 
     /**
-     *
-     * @param rat
-     * @return
+     * Sends piper to position in front of gate where it waits, then enters the gate and waits again for the rats
+     * to enter.
+     * @param piperNumber
      */
     private Cell getCell(Point rat) {
         for (Cell[] row : grid) {
@@ -348,7 +297,7 @@ public class Player implements pppp.sim.Player {
     // return next locations on last argument
     public void play(Point[][] pipers, boolean[][] pipers_played, Point[] rats, Move[] moves) {
     	ensureReturningPipersHaveRats(pipers, pipers_played, rats);
-        updateCellWeights(pipers, pipers_played, rats);
+        this.grid.updateCellWeights(pipers, pipers_played, rats);
         determinePiperDests(pipers, pipers_played, rats);
 
         Point[] ourPipers = pipers[id];
@@ -379,6 +328,7 @@ public class Player implements pppp.sim.Player {
             moves[piperNum] = NavUtils.creatMove(source, destination, playOnRouteToDestination);
             
             /* @Sagar: Please make necessary changes
+            int range = 10;
 
             // Different epsilons for gate and rat, since we dont need to be too close in the case of rats
             // But we need high precision to ensure we get through the gate properly with the rats
