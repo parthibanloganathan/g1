@@ -21,8 +21,22 @@ public class NavUtils {
      * @param destination
      */
     public static boolean isDestinationReached(Point source, Point destination) {
-        int EPSILON = 0.0001
+        double EPSILON = 0.0001;
         if (Math.abs(source.x - destination.x) < EPSILON && Math.abs(source.y - destination.y) < EPSILON) {
+            return true;
+        }
+        return false;
+    }
+    
+    /**
+     * Tells us whether the destination is reached from the source or not based on how close the two points are.
+     * Same us above, but with custom EPSILON
+     * @param source
+     * @param destination
+     * @param EPSILON
+     */
+    public static boolean isDestinationReached(Point source, Point destination, double EPSILON) {
+    	if (Math.abs(source.x - destination.x) < EPSILON && Math.abs(source.y - destination.y) < EPSILON) {
             return true;
         }
         return false;
