@@ -11,7 +11,7 @@ public class NavUtils {
      */
     public static Point getGetGateRelativeCoordinates(int id, int side) {
         double x = 0;
-        double y = 0.5 * side; // gate is located at midpoint of wall
+        double y = 0;
         return new Point(x, y);
     }
 

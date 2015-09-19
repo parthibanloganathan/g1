@@ -283,7 +283,7 @@ public class Player implements pppp.sim.Player {
     }
 
     private void addGateReturnDestinations(int piperNumber) {
-        Point gate = NavUtils.getGetGateRelativeCoordinates(this.id, this.side);
+        Point gate = new Point(0,0);
         int DISTANCE_OUTSIDE_GATE = 1;
         int DISTANCE_INSIDE_GATE = 5;
         Point pointOutsideGate = NavUtils
