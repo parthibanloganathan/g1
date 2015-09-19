@@ -2,12 +2,11 @@ package pppp.g1;
 
 import pppp.sim.Point;
 
-public class PPPPUtils {
+public class Utils {
     /**
      * Compute Euclidean distance between two points in a plane.
      * @param a
      * @param b
-     * @return distance between a and b
      */
     public static double distance(Point a, Point b) {
         double dx = a.x - b.x;
@@ -19,7 +18,6 @@ public class PPPPUtils {
      * Select the kth largest element in the array.
      * @param input_arr
      * @param k
-     * @return kth largest element
      */
     public static double quickSelect(double[] input_arr, int k) {
         if (input_arr == null)
