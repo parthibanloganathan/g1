@@ -19,6 +19,8 @@ public class Player implements pppp.sim.Player {
     final int RETURN_TO_OUTSIDE_GATE = 2;
     final int GO_THROUGH_GATE = 3;
     
+    final int RANGE = 10;
+    
     final double GATE_EPSILON = 0.000001;
     final double RAT_EPSILON = 2;
 
@@ -28,7 +30,8 @@ public class Player implements pppp.sim.Player {
     // Divide the board into a grid of cells. Each cell in the grid is
     // evaluated as a potential destination for a piper.
     private Grid grid;
-    private Point gate;
+    private Point gateAbsolute;
+    private Point gateRelative;
 
     // create move towards specified destination
 
@@ -38,6 +41,8 @@ public class Player implements pppp.sim.Player {
         this.id = id;
         this.side = side;
         int numPipers = pipers[id].length;
+        gateRelative = new Point(0,0);
+        gateAbsolute = NavUtils.transformRelativeToAbsoluteCoordinates(id, side, 0, 0);
         
         pipers_current_order = new int[numPipers];
         for(int i = 0;  i < pipers_current_order.length; ++i)
@@ -73,7 +78,7 @@ public class Player implements pppp.sim.Player {
     	return queuedMoves[piperNum].get(pipers_current_order[piperNum]);
     }
     
-    ArrayList<Cell> getImportantCells(Cell[][] grid, Point[] rats) {
+    ArrayList<Cell> getImportantCells(Grid grid, Point[] rats) {
         ArrayList<Cell> cells = new ArrayList<Cell>();
         for (Cell[] row : this.grid.grid) {
             Collections.addAll(cells, row);
@@ -88,7 +93,7 @@ public class Player implements pppp.sim.Player {
         while(cellIter.hasNext()) {
         	Cell cell = cellIter.next();
             // Discard cells that don't have high weight or are close by
-        	if(cell.weight <= 2*avg_weight || Utils.distance(cell.center, gate) < 20) {
+        	if(cell.weight <= 2*avg_weight || Utils.distance(cell.center, gateAbsolute) < 20) {
         		cellIter.remove();
         		continue;
         	}
@@ -133,7 +138,7 @@ public class Player implements pppp.sim.Player {
                     updatePiperGoalPosition(piperNum, cell.center, false);
                     
                     unassigned_pipers.remove((Integer) piperNum);
-                    if (distances[piperNum] > 20 && n_rats_near(pipers[id][piperNum], rats) < 3)
+                    if (distances[piperNum] > 20 && numRatsInRange(pipers[id][piperNum], rats, RANGE) < 3)
                         updatePiperCurrentOrder(piperNum, TO_GOAL);
                     distances[piperNum] = Double.MAX_VALUE;
                 }
@@ -193,8 +198,7 @@ public class Player implements pppp.sim.Player {
 		// Best performance seems to be obtained by going for rats that
 		// are not TOO close (these are very hard for others to steal) and not TOO far
 		// We go for hotly contested ones at a reasonable distance
-    	Point gate = NavUtils.getGetGateRelativeCoordinates(id, side);
-    	double y = Utils.distance(rat, gate);
+    	double y = Utils.distance(rat, gateAbsolute);
     	if(y <= side/2) y = (side - y)/2;
     	return y;
     }
@@ -204,7 +208,7 @@ public class Player implements pppp.sim.Player {
     	
     	// See if pipers are going back without rats; if so correct them.
     	for(int piperNum = 0; piperNum < ourPipers.length; ++piperNum) {
-    		if(n_rats_near(ourPipers[piperNum], rats) == 0) {
+    		if(numRatsInRange(ourPipers[piperNum], rats, RANGE) == 0) {
         	
 	        	// Piper is outside in the field and returning with zero rats
 	        	// then send it to look for more
@@ -260,36 +264,17 @@ public class Player implements pppp.sim.Player {
      * to enter.
      * @param piperNumber
      */
-    private Cell getCell(Point rat) {
-        for (Cell[] row : grid) {
-            for (Cell cell : row) {
-                double left = cell.corner.x;
-                double bottom = cell.corner.y;
-                double top = cell.corner.y + cell.size;
-                double right = cell.corner.x + cell.size;
-
-                if (rat.y >= bottom && rat.y < top && rat.x >= left &&
-                        rat.x < right) {
-                    return cell;
-                }
-            }
-        }
-        return null;
-    }
-    
     private void addGateExitDestination(int piperNumber) {
-    	Point gate = NavUtils.getGetGateRelativeCoordinates(this.id, this.side);
-    	queuedMoves[piperNumber].add(new PointWrapper(gate, false));
+    	queuedMoves[piperNumber].add(new PointWrapper(gateAbsolute, false));
     }
 
     private void addGateReturnDestinations(int piperNumber) {
-        Point gate = new Point(0,0);
         int DISTANCE_OUTSIDE_GATE = 1;
         int DISTANCE_INSIDE_GATE = 5;
         Point pointOutsideGate = NavUtils
-                .transformRelativeToAbsoluteCoordinates(this.id, this.side, gate.x + DISTANCE_OUTSIDE_GATE, gate.y);
+                .transformRelativeToAbsoluteCoordinates(this.id, this.side, gateRelative.x, gateRelative.y + DISTANCE_OUTSIDE_GATE);
         Point pointInsideGate = NavUtils
-                .transformRelativeToAbsoluteCoordinates(this.id, this.side, gate.x - DISTANCE_INSIDE_GATE, gate.y);
+                .transformRelativeToAbsoluteCoordinates(this.id, this.side, gateRelative.x, gateRelative.y - DISTANCE_INSIDE_GATE);
         queuedMoves[piperNumber].add(new PointWrapper(pointOutsideGate, true));
         queuedMoves[piperNumber].add(new PointWrapper(pointInsideGate, true));
     }
@@ -303,7 +288,7 @@ public class Player implements pppp.sim.Player {
         Point[] ourPipers = pipers[id];
         int numPipers = ourPipers.length;
 
-        for (int piperNum = 0; piperNum <= numPipers; piperNum++) {
+        for (int piperNum = 0; piperNum < numPipers; piperNum++) {
             Point source = ourPipers[piperNum];
             PointWrapper destinationWrapper = getPiperDestination(piperNum);
             Point destination = destinationWrapper.point;
