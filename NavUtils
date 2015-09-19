@@ -1,0 +1,21 @@
+package pppp.g1;
+
+import pppp.sim.Point;
+
+public class NavUtils {
+    public static Point getGetGateCoordinates(int id, int size) {
+        boolean negateY = (id == 2) || (id == 3);
+        boolean swapXAndY = (id == 1) || (id == 3);
+        double gateX = 0;
+        double gateY = 0.5 * side; // gate is located at middle of our wall
+        return point(gateX, gateY, negateY, swapXAndY);
+    }
+
+    private static Point point(double x, double y, boolean negateY, boolean swapXAndY) {
+        if (negateY) {
+            y = -y;
+        }
+
+        return swapXAndY ? new Point(y, x) : new Point(x, y);
+    }
+}

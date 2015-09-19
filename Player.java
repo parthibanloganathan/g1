@@ -15,6 +15,8 @@ public class Player implements pppp.sim.Player {
     private Point[] random_pos = null;
     private Random gen = new Random();
 
+    private int GATE_Y_COORDINATE = 0;
+
     // Divide the board into a grid of cells. Each cell in the grid is
     // evaluated as a potential destination for a piper.
     private Cell[][] grid = null;
@@ -33,17 +35,6 @@ public class Player implements pppp.sim.Player {
         return new Move(dx, dy, play);
     }
 
-    // generate point after negating or swapping coordinates
-    private static Point point(
-            double x,
-            double y,
-            boolean neg_y,
-            boolean swap_xy
-    ) {
-        if (neg_y) y = -y;
-        return swap_xy ? new Point(y, x) : new Point(x, y);
-    }
-
     // specify location that the player will alternate between
     public void init(
             int id, int side, long turns, Point[][] pipers, Point[] rats
@@ -54,21 +45,20 @@ public class Player implements pppp.sim.Player {
         pos = new Point[n_pipers][5];
         random_pos = new Point[n_pipers];
         pos_index = new int[n_pipers];
+
         for (int p = 0; p != n_pipers; ++p) {
             // spread out at the door level
             double door = 0.0;
             if (n_pipers != 1)
                 door = p * 1.8 / (n_pipers - 1) - 0.9;
             // pick coordinate based on where the player is
-            boolean neg_y = id == 2 || id == 3;
-            boolean swap = id == 1 || id == 3;
             // first and third position is at the door
-            gate = pos[p][0] = pos[p][2] = point(door, side * 0.5, neg_y, swap);
+            gate = pos[p][0] = pos[p][2] = NavUtils.point(door, side * 0.5, negateY, swapXAndY);
             // second position is chosen randomly in the rat moving area
             pos[p][1] = null;
             // fourth and fifth positions are outside the rat moving area
-            pos[p][3] = point(door * -6, side * 0.5 + 3, neg_y, swap);
-            pos[p][4] = point(door * +6, side * 0.5 + 3, neg_y, swap);
+            pos[p][3] = NavUtils.point(door * -6, side * 0.5 + 3, neg_y, swap);
+            pos[p][4] = NavUtils.point(door * +6, side * 0.5 + 3, neg_y, swap);
             // start with first position
             pos_index[p] = 0;
         }
@@ -299,52 +289,65 @@ public class Player implements pppp.sim.Player {
         return null;
     }
 
+    private void sendRatsThroughGate(Point piper, ) {
+        Point gate = NavUtils.getGetGateCoordinates(this.id, this.side);
+        Point pointOutsideGate = point(door, GATE_Y_COORDINATE);
+    }
+
     // return next locations on last argument
     public void play(
             Point[][] pipers, boolean[][] pipers_played, Point[] rats,
             Move[] moves
     ) {
-        updateCellWeights(pipers, pipers_played, rats);
-        determinePiperDests(pipers, pipers_played, rats);
+        //updateCellWeights(pipers, pipers_played, rats);
+        //determinePiperDests(pipers, pipers_played, rats);
 
         Point[] ourPipers = pipers[id];
         int numPipers = ourPipers.length;
-        for (int p = 0; p != numPipers; ++p) {
+        for (int p = 0; p <= numPipers; p++) {
         	if(pos_index[p] == 2 && n_rats_near(ourPipers[p], rats) == 0) --pos_index[p];
+
+            // Current location of piper
             Point src = ourPipers[p];
+
+            // Get list of moves this piper should make
             Point[] piperMoveList = pos[p];
             int moveNum = pos_index[p];
-            // Get destination from list of moves the piper should make.
+
+            // Destination is the next move from list of moves the piper should make
             Point dst = piperMoveList[moveNum];
 
-            // if null then get random position
+            // If dst is null then stay in same position
             if (dst == null) {
-                dst = random_pos[p];
+                dst = src;
             }
             
             // Different epsilons for gate and rat, since we dont need to be too close in the case of rats
             // But we need high precision to ensure we get through the gate properly with the rats
-            double GATE_EPSILON = 0.000001;
-            double RAT_EPSILON = 2;
-            // if position is reached, ie. distance between src and destination is within some epsilon
+            const double GATE_EPSILON = 0.000001;
+            const double RAT_EPSILON = 2;
+            // If position is reached, ie. distance between src and destination is within some epsilon
             if ((Math.abs(src.x - dst.x) < GATE_EPSILON &&
                     Math.abs(src.y - dst.y) < GATE_EPSILON) || 
                     (PPPPUtils.distance(src,dst) < RAT_EPSILON && moveNum == 1)) {
-                // get next position
-                // If we reach end of the moves list, reset
+
+                // Get the next position this piper should go to by incrementing the position index.
+                // If we reach end of the moves list, reset the index to look at for next move.
                 if (++pos_index[p] == piperMoveList.length) {
                     pos_index[p] = 0;
                 }
                 moveNum = pos_index[p];
                 dst = piperMoveList[moveNum];
-                // generate a new position if random
+
+                // Generate a new position if random
                 if (dst == null) {
                     double x = (gen.nextDouble() - 0.5) * side * 0.9;
                     double y = (gen.nextDouble() - 0.5) * side * 0.9;
                     random_pos[p] = dst = new Point(x, y);
                 }
             }
-            // get move towards position
+
+            // Update moves to move towards position
             moves[p] = move(src, dst, pos_index[p] > 1);
         }
     }
