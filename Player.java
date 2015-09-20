@@ -74,14 +74,14 @@ public class Player implements pppp.sim.Player {
         }
 
         // Initialize the grid of cells
-        this.grid = createGrid(side, side/20);
+        this.grid = createGrid(side, side / 20);
     }
 
     /**
      * Create a grid of square cells each of side length size.
      *
-     * @param side
-     * @param slices
+     * @param side The unit length of a side of the play area.
+     * @param slices The number of devisions by which to divide the side.
      * @return grid of cells
      */
     private Cell[][] createGrid(int side, int slices) {
@@ -110,15 +110,15 @@ public class Player implements pppp.sim.Player {
     /**
      * Update the weights of all cells.
      *
-     * @param pipers
-     * @param pipers_played
-     * @param rats
+     * @param pipers The locations of all pipers in the game.
+     * @param pipers_played The music play state of all the pipers.
+     * @param rats The locations of all the rats in the game.
      */
     private void updateCellWeights(
             Point[][] pipers, boolean[][] pipers_played, Point[] rats
     ) {
         // Reset cell weights
-    	for(Cell[] row : grid) {
+        for (Cell[] row : grid) {
             for (Cell cell : row) {
                 cell.weight = 0;
             }
@@ -131,7 +131,9 @@ public class Player implements pppp.sim.Player {
         }
     }
 
-    void determinePiperDests(Point[][] pipers, boolean[][] pipers_played, Point[] rats) {
+    void determinePiperDests(
+            Point[][] pipers, boolean[][] pipers_played, Point[] rats
+    ) {
         // We're ignoring other inputs for now, just considering the
         // rats and the instance variable 'grid'
 
@@ -143,19 +145,22 @@ public class Player implements pppp.sim.Player {
         cells.sort(null);
         int n_rats = 0;
         Iterator<Cell> cellIter = cells.iterator();
-        
+
         // What we're going to do is only consider cells with over twice the
         // average weight that are not literally at our gate (this would
         // basically lock pipers into base)
-        double avg_weight = rats.length/cells.size(); // expected number of rats per cell
-        while(cellIter.hasNext()) {
-        	Cell cell = cellIter.next();
+
+        // expected number of rats per cell
+        double avg_weight = rats.length / cells.size();
+        while (cellIter.hasNext()) {
+            Cell cell = cellIter.next();
             // Discard cells that don't have high weight or are close by
-        	if(cell.weight <= 2*avg_weight || PPPPUtils.distance(cell.center, gate) < 20) {
-        		cellIter.remove();
-        		continue;
-        	}
-        	n_rats += cell.weight;
+            if (cell.weight <= 2 * avg_weight ||
+                    PPPPUtils.distance(cell.center, gate) < 20) {
+                cellIter.remove();
+                continue;
+            }
+            n_rats += cell.weight;
         }
         for (Cell cell : cells) {
             n_rats += cell.weight;
@@ -167,11 +172,12 @@ public class Player implements pppp.sim.Player {
         // They are either moving towards rats or herding them back (in this
         // case they change tactics rarely)
         for (int i = 0; i < n_pipers; ++i)
-            if(pos_index[i] == 1 || pos_index[i] == 2)
+            if (pos_index[i] == 1 || pos_index[i] == 2)
                 unassigned_pipers.add(i);
 
         for (Cell cell : cells) {
-            if (n_rats == 0 || unassigned_pipers.size() == 0 || cell.weight <= 1)
+            if (n_rats == 0 || unassigned_pipers.size() == 0 ||
+                    cell.weight <= 1)
                 break;
             // Probably need to reweight/increase this artificially too
             // Temporarily changing the formula to only consider cells with
@@ -188,10 +194,13 @@ public class Player implements pppp.sim.Player {
                         : Double.MAX_VALUE;
             }
             // Get the n closest pipers to the cell i.
-            double nth_smallest = PPPPUtils.quickSelect(distances, n_pipers_to_i);
+            double nth_smallest = PPPPUtils.quickSelect(
+                    distances, n_pipers_to_i
+            );
             // Send pipers towards cell i
             for (int j = 0; j < distances.length; ++j)
-                if (distances[j] <= nth_smallest && distances[j] != Double.MAX_VALUE) {
+                if (distances[j] <= nth_smallest &&
+                        distances[j] != Double.MAX_VALUE) {
                     // I'm abstracting away many details by using the
                     // current structure the TA gave for go to door ->
                     // go to location (he used random) -> back to door
@@ -199,7 +208,8 @@ public class Player implements pppp.sim.Player {
                     Integer piper = j;
                     random_pos[piper] = cell.center;
                     unassigned_pipers.remove(piper);
-                    if (distances[piper] > 20 && n_rats_near(pipers[id][piper], rats) < 3)
+                    if (distances[piper] > 20 &&
+                            n_rats_near(pipers[id][piper], rats) < 3)
                         pos_index[piper] = 1;
                     distances[piper] = Double.MAX_VALUE;
                 }
@@ -209,59 +219,69 @@ public class Player implements pppp.sim.Player {
         // will have ONLY unassigned pipers. I'm also expecting a small
         // number of unassigned pipers dense maps.
         if (unassigned_pipers.size() > 0) {
-        	int n_unassigned = unassigned_pipers.size();
-        	double[] rat_dist_gate = new double[rats.length];
-        	for(int i = 0; i < rat_dist_gate.length; ++i) {
-        		rat_dist_gate[i] = PPPPUtils.distance(rats[i], gate);
-        		// We need to ignore any rats that are being brought in at the moment
-        		// Best performance seems to be obtained by going for rats that
-        		// are not TOO close (these are very hard for others to steal) and not TOO far
-        		// We go for hotly contested ones at a reasonable distance
+            int n_unassigned = unassigned_pipers.size();
+            double[] rat_dist_gate = new double[rats.length];
+            for (int i = 0; i < rat_dist_gate.length; ++i) {
+                rat_dist_gate[i] = PPPPUtils.distance(rats[i], gate);
+                // We need to ignore any rats that are being brought in
+                // at the moment Best performance seems to be obtained by
+                // going for rats that are not TOO close (these are very
+                // hard for others to steal) and not TOO far We go for
+                // hotly contested ones at a reasonable distance. In effect,
+                // rat_dist_gate acts as a "weighting" and this can
+                // definitely be refined
+                if (rat_dist_gate[i] <= side / 2)
+                    rat_dist_gate[i] = (side - rat_dist_gate[i]) / 2;
 
-        		// In effect, rat_dist_gate acts as a "weighting" and this can definitely be refined
-        		if(rat_dist_gate[i] <= side/2) rat_dist_gate[i] = (side - rat_dist_gate[i])/2;
-        		
-        	}
-        	// Ensure that there are at least as many rats as pipers
-        	// if not first only assign 1 piper to each rat first
-        	// Then we assign the rest of the pipers to the closest rat
-        	double nth_closest_rat = PPPPUtils.quickSelect(rat_dist_gate, Math.min(n_unassigned,rat_dist_gate.length));
-        	for(int i = 0; i < rat_dist_gate.length; ++i)
-        		if(rat_dist_gate[i] <= nth_closest_rat) {
-        			Integer closest_piper = null;
-        			double dist_closest = Double.MAX_VALUE;
-        			// From all the unassigned pipers, send the closest one towards this rat
-        			for(Integer piper : unassigned_pipers) {
-        				if(PPPPUtils.distance(pipers[id][piper], rats[i]) <= dist_closest) {
-        					dist_closest = PPPPUtils.distance(pipers[id][piper], rats[i]);
-        					closest_piper = piper;
-        				}
-        			}
-        			// Piper is now assigned, remove from unassigned list
-					unassigned_pipers.remove(closest_piper);
-					random_pos[closest_piper] = rats[i];
-					if(unassigned_pipers.size() == 0) return;
-        		}
-        	// In case we had more pipers than rats, send to closest rat
-        	// I think send to random rat might be better here?
-        	if(unassigned_pipers.size() > 0) {
-        		if(rats.length == 0) return;
-        		Iterator<Integer> iter = unassigned_pipers.iterator();
-        		while(iter.hasNext()) {
-        			Integer piper = iter.next();
-        			Point closest_rat_pos = null;
-        			double closest_rat_dist = Double.MAX_VALUE;
+            }
+            // Ensure that there are at least as many rats as pipers
+            // if not first only assign 1 piper to each rat first
+            // Then we assign the rest of the pipers to the closest rat
+            double nth_closest_rat = PPPPUtils.quickSelect(
+                    rat_dist_gate, Math.min(n_unassigned, rat_dist_gate.length)
+            );
+            for (int i = 0; i < rat_dist_gate.length; ++i)
+                if (rat_dist_gate[i] <= nth_closest_rat) {
+                    Integer closest_piper = null;
+                    double dist_closest = Double.MAX_VALUE;
+                    // From all the unassigned pipers, send the closest
+                    // one towards this rat
+                    for (Integer piper : unassigned_pipers) {
+                        if (PPPPUtils.distance(
+                                pipers[id][piper], rats[i]) <= dist_closest) {
+                            dist_closest = PPPPUtils.distance(
+                                    pipers[id][piper], rats[i]
+                            );
+                            closest_piper = piper;
+                        }
+                    }
+                    // Piper is now assigned, remove from unassigned list
+                    unassigned_pipers.remove(closest_piper);
+                    random_pos[closest_piper] = rats[i];
+                    if (unassigned_pipers.size() == 0) return;
+                }
+            // In case we had more pipers than rats, send to closest rat
+            // I think send to random rat might be better here?
+            if (unassigned_pipers.size() > 0) {
+                if (rats.length == 0) return;
+                Iterator<Integer> iter = unassigned_pipers.iterator();
+                while (iter.hasNext()) {
+                    Integer piper = iter.next();
+                    Point closest_rat_pos = null;
+                    double closest_rat_dist = Double.MAX_VALUE;
                     for (Point rat : rats) {
-                        double dist = PPPPUtils.distance(pipers[id][piper], rat);
+                        double dist = PPPPUtils.distance(
+                                pipers[id][piper], rat
+                        );
                         if (dist < closest_rat_dist) {
                             closest_rat_dist = dist;
                             closest_rat_pos = rat;
                         }
                     }
-        			random_pos[piper] = closest_rat_pos;
-        			iter.remove();
-        		}
-        	}
+                    random_pos[piper] = closest_rat_pos;
+                    iter.remove();
+                }
+            }
         }
     }
 
@@ -269,18 +289,17 @@ public class Player implements pppp.sim.Player {
      * Yields the number of rats within range
      */
     static int n_rats_near(Point piper, Point[] rats) {
-    	int num_rats = 0;
-        const int RANGE = 10;
+        int num_rats = 0;
+        int RANGE = 10;
         for (Point rat : rats) {
-            n += PPPPUtils.distance(piper, rat) <= RANGE ? 1 : 0;
+            num_rats += PPPPUtils.distance(piper, rat) <= RANGE ? 1 : 0;
         }
-    	return num_rats;
+        return num_rats;
     }
 
     /**
-     *
-     * @param rat
-     * @return
+     * @param rat The position of an input rat in the game.
+     * @return The cell in which this rat is located or null.
      */
     private Cell getCell(Point rat) {
         for (Cell[] row : grid) {
@@ -310,7 +329,8 @@ public class Player implements pppp.sim.Player {
         Point[] ourPipers = pipers[id];
         int numPipers = ourPipers.length;
         for (int p = 0; p != numPipers; ++p) {
-        	if(pos_index[p] == 2 && n_rats_near(ourPipers[p], rats) == 0) --pos_index[p];
+            if (pos_index[p] == 2 && n_rats_near(ourPipers[p], rats) == 0)
+                --pos_index[p];
             Point src = ourPipers[p];
             Point[] piperMoveList = pos[p];
             int moveNum = pos_index[p];
@@ -321,15 +341,18 @@ public class Player implements pppp.sim.Player {
             if (dst == null) {
                 dst = random_pos[p];
             }
-            
-            // Different epsilons for gate and rat, since we dont need to be too close in the case of rats
-            // But we need high precision to ensure we get through the gate properly with the rats
+
+            // Different epsilons for gate and rat, since we dont need
+            // to be too close in the case of rats But we need high
+            // precision to ensure we get through the gate properly
+            // with the rats.
             double GATE_EPSILON = 0.000001;
             double RAT_EPSILON = 2;
-            // if position is reached, ie. distance between src and destination is within some epsilon
+            // if position is reached, ie. distance between src and
+            // destination is within some epsilon.
             if ((Math.abs(src.x - dst.x) < GATE_EPSILON &&
-                    Math.abs(src.y - dst.y) < GATE_EPSILON) || 
-                    (PPPPUtils.distance(src,dst) < RAT_EPSILON && moveNum == 1)) {
+                    Math.abs(src.y - dst.y) < GATE_EPSILON) ||
+                    (PPPPUtils.distance(src, dst) < RAT_EPSILON && moveNum == 1)) {
                 // get next position
                 // If we reach end of the moves list, reset
                 if (++pos_index[p] == piperMoveList.length) {
