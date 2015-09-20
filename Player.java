@@ -21,7 +21,7 @@ public class Player implements pppp.sim.Player {
     
     final int RANGE = 10;
     
-    final double GATE_EPSILON = 0.000001;
+    final double GATE_EPSILON = 0.00001;
     final double RAT_EPSILON = 2;
 
     // Array of queues. Each queue belongs to a piper and contains the moves queued up for that piper.
@@ -58,12 +58,11 @@ public class Player implements pppp.sim.Player {
 
         // Initialize the grid of cells
         int cellSize = 20; // side must be multiple of cellSize
-        int slices = side/cellSize;
-        this.grid = new Grid(side, slices);
+        this.grid = new Grid(side, cellSize);
     }
     
     void updatePiperGoalPosition(int piperNum, Point newGoal, boolean playMusic) {
-    	queuedMoves[piperNum].set(piperNum, new PointWrapper(newGoal, playMusic));
+    	queuedMoves[piperNum].set(1, new PointWrapper(newGoal, playMusic));
     }
     
     void updatePiperCurrentOrder(int piperNum, int newOrder) {
@@ -72,6 +71,14 @@ public class Player implements pppp.sim.Player {
     
     void incrementPiperOrder(int piperNum) {
     	pipers_current_order[piperNum] = (pipers_current_order[piperNum] + 1) % 4;
+    }
+    
+    void stayInBase(int piperNum) {
+    	Point basePoint = NavUtils.transformRelativeToAbsoluteCoordinates(id, side, gateRelative.x, gateRelative.y-2);
+    	PointWrapper pw = new PointWrapper(basePoint, true);
+    	for(int i = 0; i < queuedMoves[piperNum].size(); ++i) {
+    		queuedMoves[piperNum].set(i, pw);
+    	}
     }
     
     PointWrapper getPiperDestination(int piperNum) {
@@ -116,6 +123,7 @@ public class Player implements pppp.sim.Player {
             // Temporarily changing the formula to only consider cells with
             // atleast twice average weight seems to have fixed this
             int n_pipers_to_i = num_unassigned * cell.weight / sum_cellweights;
+            System.out.println("Sending "+n_pipers_to_i+" pipers to cell with weight "+cell.weight+"; loc: "+cell.center.x+","+cell.center.y);
             if (n_pipers_to_i == 0)
                 break;
 
@@ -167,7 +175,7 @@ public class Player implements pppp.sim.Player {
     				}
     			}
     			// Piper is now assigned, remove from unassigned list
-				unassigned_pipers.remove(closest_piper);
+				unassigned_pipers.remove((Integer) closest_piper);
 				updatePiperGoalPosition(closest_piper, rats[i], false);
 				if(unassigned_pipers.size() == 0) return;
     		}
@@ -181,15 +189,27 @@ public class Player implements pppp.sim.Player {
     			Point closest_rat_pos = null;
     			double closest_rat_dist = Double.MAX_VALUE;
                 for (Point rat : rats) {
-                    double dist = Utils.distance(pipers[id][piper], rat);
-                    if (dist < closest_rat_dist) {
-                        closest_rat_dist = dist;
-                        closest_rat_pos = rat;
-                    }
+                	// We ignore rats less than 2m from the gate because this will cause conflicts
+                	if(Utils.distance(rat, gateAbsolute) > 2) {
+	                    double dist = Utils.distance(pipers[id][piper], rat);
+	                    if (dist < closest_rat_dist) {
+	                        closest_rat_dist = dist;
+	                        closest_rat_pos = rat;
+	                    }
+                	}
                 }
-                updatePiperGoalPosition(piper, closest_rat_pos, false);
+                // If all rats are within 2m of gate just sit inside gate and play music
+                if(closest_rat_pos == null) {
+                	stayInBase(piper);
+                } else {
+                	updatePiperGoalPosition(piper, closest_rat_pos, false);
+                }
     			iter.remove();
     		}
+    	}
+    	if(unassigned_pipers.size() > 0) {
+    		for(Integer piper : unassigned_pipers)
+    			System.out.println(piper+": "+queuedMoves[piper].get(1).point.x+","+queuedMoves[piper].get(1).point.y);
     	}
     }
     
@@ -284,14 +304,30 @@ public class Player implements pppp.sim.Player {
     	ensureReturningPipersHaveRats(pipers, pipers_played, rats);
         this.grid.updateCellWeights(pipers, pipers_played, rats);
         determinePiperDests(pipers, pipers_played, rats);
+        
 
         Point[] ourPipers = pipers[id];
         int numPipers = ourPipers.length;
 
         for (int piperNum = 0; piperNum < numPipers; piperNum++) {
-            Point source = ourPipers[piperNum];
+        	//Point goal = queuedMoves[piperNum].get(1).point;
+        	//System.out.println("Piper"+piperNum+": "+goal.x+", "+goal.y);
+        	/*if(pipers_current_order[piperNum] != 0) pipers_current_order[piperNum] = TO_GOAL;
+            if(piperNum == 0) {
+            	updatePiperGoalPosition(piperNum, new Point(0, 0), false);
+            	System.out.println("piper0: "+pipers[id][0].x+","+pipers[id][0].y);
+            }
+            if(piperNum == 1) {
+            	updatePiperGoalPosition(piperNum, new Point(30, 40), false);
+            	System.out.println("piper1: "+pipers[id][1].x+","+pipers[id][1].y);
+            }*/
+            
+        	Point source = ourPipers[piperNum];
             PointWrapper destinationWrapper = getPiperDestination(piperNum);
             Point destination = destinationWrapper.point;
+            System.out.println("piper"+piperNum+": "+pipers_current_order[piperNum]+": "+destination.x+", "+destination.y);
+            //if(destination.x == 0 && destination.y == 0)
+            //	System.out.println(piperNum);
             boolean playOnRouteToDestination = destinationWrapper.play;
 
             // If destination is null then stay in same position

@@ -13,16 +13,18 @@ public class Grid {
      * @param side
      * @param slices
      */
-    public Grid(int side, int slices) {
+    public Grid(int side, int cellSize) {
         // The board consists of size^2 number of square cells.
-        cellSize = (double) side / (double) slices;
+        this.cellSize = cellSize;
+        int slices = side/cellSize;
         this.side = side;
         this.grid = new Cell[slices][slices];
+        int offset = -side/2;
         for (int i = 0; i < slices; i++) {
             for (int j = 0; j < slices; j++) {
                 this.grid[i][j] = new Cell(
-                        new Point(i * cellSize, j * cellSize), // top-left corner
-                        new Point((i + 0.5) * cellSize, (j + 0.5) * cellSize), // center
+                        new Point(i * cellSize + offset, j * cellSize + offset), // top-left corner
+                        new Point((i + 0.5) * cellSize + offset, (j + 0.5) * cellSize + offset), // center
                         cellSize,
                         0 // initialize with zero weight
                 );
@@ -58,8 +60,24 @@ public class Grid {
      * @param point
      */
     private Cell getCellContainingPoint(Point point) {
+    	for (Cell[] row : grid) {
+            for (Cell cell : row) {
+                double left = cell.corner.x;
+                double bottom = cell.corner.y;
+                double top = cell.corner.y + cell.size;
+                double right = cell.corner.x + cell.size;
+
+                if (point.y >= bottom && point.y < top && point.x >= left &&
+                        point.x < right) {
+                    return cell;
+                }
+            }
+        }
+        return null;
+    	/*
         int cellRow = (int) (point.x / cellSize);
         int cellColumn = (int) (point.y / cellSize);
         return grid[cellRow][cellColumn];
+        */
     }
 }
