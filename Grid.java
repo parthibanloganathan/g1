@@ -10,23 +10,27 @@ public class Grid {
     /**
      * Create a grid of square cells each of side length size.
      *
-     * @param side
-     * @param slices
+     * @param side   Side of the grid.
+     * @param slices Number of devisions by which to devide the side.
      */
-    public Grid(int side, int cellSize) {
+    public Grid(int side, int slices) {
         // The board consists of size^2 number of square cells.
-        this.cellSize = cellSize;
-        int slices = side/cellSize;
         this.side = side;
+        cellSize = (double) side / slices;
+        double offset = (double) side / 2;
         this.grid = new Cell[slices][slices];
-        int offset = -side/2;
         for (int i = 0; i < slices; i++) {
             for (int j = 0; j < slices; j++) {
                 this.grid[i][j] = new Cell(
-                        new Point(i * cellSize + offset, j * cellSize + offset), // top-left corner
-                        new Point((i + 0.5) * cellSize + offset, (j + 0.5) * cellSize + offset), // center
-                        cellSize,
-                        0 // initialize with zero weight
+                        new Point(  // X, Y - bottom-left corner
+                                (i * cellSize) - offset,
+                                (j * cellSize) - offset
+                        ),
+                        new Point(  // X, Y - center
+                                (i + 0.5) * cellSize - offset,
+                                (j + 0.5) * cellSize - offset
+                        ),
+                        cellSize, 0 // initialize with zero weight
                 );
             }
         }
@@ -35,12 +39,15 @@ public class Grid {
     /**
      * Update the weights of all cells.
      *
-     * @param pipers
-     * @param pipers_played
+     * @param pipers        The positions of all the pipers on the board.
+     * @param pipers_played The state of playing music for all the pipers.
+     * @param rats          The positions for all rats on the board.
      */
-    public void updateCellWeights(Point[][] pipers, boolean[][] pipers_played, Point[] rats) {
+    public void updateCellWeights(
+            Point[][] pipers, boolean[][] pipers_played, Point[] rats
+    ) {
         // Reset cell weights
-        for(Cell[] row : this.grid) {
+        for (Cell[] row : this.grid) {
             for (Cell cell : row) {
                 cell.weight = 0;
             }
@@ -57,10 +64,11 @@ public class Grid {
 
     /**
      * Find the cell containing the given point.
-     * @param point
+     *
+     * @param point The position for which the cell needs to be found.
      */
     private Cell getCellContainingPoint(Point point) {
-    	for (Cell[] row : grid) {
+        for (Cell[] row : grid) {
             for (Cell cell : row) {
                 double left = cell.corner.x;
                 double bottom = cell.corner.y;
@@ -74,10 +82,5 @@ public class Grid {
             }
         }
         return null;
-    	/*
-        int cellRow = (int) (point.x / cellSize);
-        int cellColumn = (int) (point.y / cellSize);
-        return grid[cellRow][cellColumn];
-        */
     }
 }

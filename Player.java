@@ -11,356 +11,321 @@ public class Player implements pppp.sim.Player {
     private int id = -1;
     private int side = 0;
 
-    private int[] pipers_current_order;
-    private Random gen = new Random();
-    
-    final int LEAVE_GATE = 0;
+    private int[] pos_state;
+//    private Random gen = new Random();
+
+    final int AT_GATE = 0;
     final int TO_GOAL = 1;
-    final int RETURN_TO_OUTSIDE_GATE = 2;
-    final int GO_THROUGH_GATE = 3;
-    
-    final int RANGE = 10;
-    
+    final int TO_GATE = 2;
+    final int UNLOAD = 3;
+
+    final int PLAY_RAD = 10;
+    final int GRID_SLICES = 5;
     final double GATE_EPSILON = 0.00001;
     final double RAT_EPSILON = 2;
+    final double FROM_GATE = 1;
+    final double IN_GATE = 4;
 
-    // Array of queues. Each queue belongs to a piper and contains the moves queued up for that piper.
-    private ArrayList<PointWrapper>[] queuedMoves;
+    // Array of queues. Each queue belongs to a piper and contains the
+    // moves queued up for that piper.
+    private ArrayList<ArrayList<PiperDest>> movesQueue;
 
     // Divide the board into a grid of cells. Each cell in the grid is
     // evaluated as a potential destination for a piper.
     private Grid grid;
-    private Point gateAbsolute;
-    private Point gateRelative;
-
-    // create move towards specified destination
-
+    private Point gate;
+    private Point gate_in;
 
     // specify location that the player will alternate between
-    public void init(int id, int side, long turns, Point[][] pipers, Point[] rats) {
+    public void init(
+            int id, int side, long turns, Point[][] pipers, Point[] rats
+    ) {
         this.id = id;
         this.side = side;
         int numPipers = pipers[id].length;
-        gateRelative = new Point(0,0);
-        gateAbsolute = NavUtils.transformRelativeToAbsoluteCoordinates(id, side, 0, 0);
-        
-        pipers_current_order = new int[numPipers];
-        for(int i = 0;  i < pipers_current_order.length; ++i)
-        	pipers_current_order[i] = LEAVE_GATE;
-        
-        this.queuedMoves = new ArrayList[numPipers];
-        for(int i = 0; i < queuedMoves.length; ++i) {
-        	queuedMoves[i] = new ArrayList<PointWrapper>();
-        	addGateExitDestination(i);
-        	queuedMoves[i].add(new PointWrapper(new Point(0,0),false)); // placeHolder "goal"
-        	addGateReturnDestinations(i);
+        boolean neg_y = id == 2 || id == 3;
+        boolean swap = id == 1 || id == 3;
+
+        this.gate = Utils.point(0.0, side * 0.5, neg_y, swap);
+        this.gate_in = Utils.point(0.0, side * 0.5 + IN_GATE, neg_y, swap);
+        Point gate_out = Utils.point(0.0, side * 0.5 - FROM_GATE, neg_y, swap);
+
+        pos_state = new int[numPipers];
+        for (int i = 0; i < pos_state.length; ++i)
+            pos_state[i] = AT_GATE;
+
+        this.movesQueue = new ArrayList<ArrayList<PiperDest>>(numPipers);
+        for (int i = 0; i < numPipers; ++i) {
+            ArrayList<PiperDest> inner = new ArrayList<PiperDest>();
+            inner.add(new PiperDest(this.gate, false));
+            inner.add(new PiperDest(new Point(0, 0), false));  // Placeholder
+            inner.add(new PiperDest(gate_out, true));
+            inner.add(new PiperDest(gate_in, true));
+            movesQueue.add(inner);
         }
 
         // Initialize the grid of cells
-        int cellSize = 20; // side must be multiple of cellSize
-        this.grid = new Grid(side, cellSize);
+        this.grid = new Grid(side, GRID_SLICES);
     }
-    
-    void updatePiperGoalPosition(int piperNum, Point newGoal, boolean playMusic) {
-    	queuedMoves[piperNum].set(1, new PointWrapper(newGoal, playMusic));
+
+    void updateGoal(int piperNum, Point newGoal, boolean playMusic) {
+        movesQueue.get(piperNum).set(1, new PiperDest(newGoal, playMusic));
     }
-    
-    void updatePiperCurrentOrder(int piperNum, int newOrder) {
-    	pipers_current_order[piperNum] = newOrder;
-    }
-    
-    void incrementPiperOrder(int piperNum) {
-    	pipers_current_order[piperNum] = (pipers_current_order[piperNum] + 1) % 4;
-    }
-    
+
     void stayInBase(int piperNum) {
-    	Point basePoint = NavUtils.transformRelativeToAbsoluteCoordinates(id, side, gateRelative.x, gateRelative.y-2);
-    	PointWrapper pw = new PointWrapper(basePoint, true);
-    	for(int i = 0; i < queuedMoves[piperNum].size(); ++i) {
-    		queuedMoves[piperNum].set(i, pw);
-    	}
+        PiperDest pw = new PiperDest(gate_in, true);
+        for (int i = 0; i < movesQueue.get(piperNum).size(); ++i) {
+            movesQueue.get(piperNum).set(i, pw);
+        }
     }
-    
-    PointWrapper getPiperDestination(int piperNum) {
-    	return queuedMoves[piperNum].get(pipers_current_order[piperNum]);
-    }
-    
+
     ArrayList<Cell> getImportantCells(Grid grid, Point[] rats) {
         ArrayList<Cell> cells = new ArrayList<Cell>();
-        for (Cell[] row : this.grid.grid) {
+        for (Cell[] row : grid.grid) {
             Collections.addAll(cells, row);
         }
         cells.sort(null);
         Iterator<Cell> cellIter = cells.iterator();
-        
+
         // What we're going to do is only consider cells with over twice the
         // average weight that are not literally at our gate (this would
-        // basically lock pipers into base)
-        double avg_weight = rats.length/cells.size(); // expected number of rats per cell
-        while(cellIter.hasNext()) {
-        	Cell cell = cellIter.next();
+        // basically lock pipers into base).
+
+        // expected number of rats per cell
+        double avg_weight = rats.length / cells.size();
+        while (cellIter.hasNext()) {
+            Cell cell = cellIter.next();
             // Discard cells that don't have high weight or are close by
-        	if(cell.weight <= 2*avg_weight || Utils.distance(cell.center, gateAbsolute) < 20) {
-        		cellIter.remove();
-        		continue;
-        	}
+            if (cell.weight <= 2 * avg_weight ||
+                    Utils.distance(cell.center, this.gate) < 20) {
+                cellIter.remove();
+            }
         }
         return cells;
     }
 
-    void assignPipersByCellweights(ArrayList<Integer> unassigned_pipers, Point[] rats, Point[][] pipers) {
-    	ArrayList<Cell> cells = getImportantCells(grid, rats);
-    	int sum_cellweights = 0;
+    /**
+     * Assigning pipers to go to a particular cell based on cell weights.
+     *
+     * @param idle_pipers Pipers for which a goal can be assigned.
+     * @param rats              The position of all the rats.
+     * @param pipers            The positions of all the pipers in the game.
+     */
+    void assignGoalByCellWeights(
+            ArrayList<Integer> idle_pipers, Point[] rats, Point[][] pipers
+    ) {
+        ArrayList<Cell> cells = getImportantCells(grid, rats);
+        int sum_weights = 0;
         for (Cell cell : cells) {
-            sum_cellweights += cell.weight;
+            sum_weights += cell.weight;
         }
-    	
-        int num_unassigned = unassigned_pipers.size();
+
+        // Cicles through the highest rated cell first and downwards.
         for (Cell cell : cells) {
-            if (sum_cellweights == 0 || unassigned_pipers.size() == 0 || cell.weight <= 1)
+            if (sum_weights == 0 || idle_pipers.size() == 0 || cell.weight <= 1)
                 break;
+
             // Probably need to reweight/increase this artificially too
             // Temporarily changing the formula to only consider cells with
             // atleast twice average weight seems to have fixed this
-            int n_pipers_to_i = num_unassigned * cell.weight / sum_cellweights;
-            System.out.println("Sending "+n_pipers_to_i+" pipers to cell with weight "+cell.weight+"; loc: "+cell.center.x+","+cell.center.y);
-            if (n_pipers_to_i == 0)
+            int pipers2cell = idle_pipers.size() * (cell.weight / sum_weights);
+            if (pipers2cell == 0)
                 break;
 
-            double[] distances = new double[pipers[id].length];
-            for (int piperNum = 0; piperNum < distances.length; ++piperNum) {
-            	distances[piperNum] = Utils.distance(cell.center, pipers[id][piperNum]);
+            double[] dists = new double[pipers[id].length];
+            for (int piper_id = 0; piper_id < pipers[id].length; ++piper_id) {
+                dists[piper_id] = Utils.distance(
+                        cell.center, pipers[id][piper_id]
+                );
 
-            	// If the piper is busy/assigned, set dist to MAX
-            	if(unassigned_pipers.contains((Integer) piperNum))
-            		distances[piperNum] = Double.MAX_VALUE;
+                // If the piper is busy/assigned, set dist to MAX
+                if (!idle_pipers.contains(piper_id))
+                    dists[piper_id] = Double.MAX_VALUE;
             }
 
             // Get the n closest pipers to the cell i.
-            double nth_smallest = Utils.quickSelect(distances, n_pipers_to_i);
+            double nth_smallest = Utils.quickSelect(dists, pipers2cell);
             // Send pipers towards cell i
-            for (int piperNum = 0; piperNum < distances.length; ++piperNum)
-                if (distances[piperNum] <= nth_smallest && distances[piperNum] != Double.MAX_VALUE) {
+            for (int i = 0; i < pipers[id].length; ++i)
+                if (dists[i] <= nth_smallest && dists[i] != Double.MAX_VALUE) {
+                    // Send piper to this cell, while not playing music
+                    double dist = Utils.distance(cell.center, movesQueue.get(i).get(1).point);
+                    int n_rats = numRatsInRange(pipers[id][i], rats, PLAY_RAD);
+                    if (dist < 2 * grid.cellSize && n_rats < 3) {
+                        updateGoal(i, cell.center, false);
+                    }
+                    idle_pipers.remove((Integer) i);
 
-                    // Send piper to this cell, while not playing music (playMusic = false)
-                    updatePiperGoalPosition(piperNum, cell.center, false);
-                    
-                    unassigned_pipers.remove((Integer) piperNum);
-                    if (distances[piperNum] > 20 && numRatsInRange(pipers[id][piperNum], rats, RANGE) < 3)
-                        updatePiperCurrentOrder(piperNum, TO_GOAL);
-                    distances[piperNum] = Double.MAX_VALUE;
+                    if (dists[i] > 20 && n_rats < 3) {
+                        pos_state[i] = TO_GOAL;
+                    }
                 }
         }
     }
-    
-    void assignPipersByRatDistanceFunction(ArrayList<Integer> unassigned_pipers, Point[] rats, Point[][] pipers) {
-    	int n_unassigned = unassigned_pipers.size();
-    	double[] rat_weights = new double[rats.length];
-    	for(int i = 0; i < rat_weights.length; ++i) {
-    		rat_weights[i] = distanceFunction(rats[i]);
-    	}
-    	// Ensure that there are at least as many rats as pipers
-    	// if not first only assign 1 piper to each rat first
-    	// Then we assign the rest of the pipers to the closest rat
-    	double nth_lowest_weight = Utils.quickSelect(rat_weights, Math.min(n_unassigned, rat_weights.length));
-    	for(int i = 0; i < rat_weights.length; ++i)
-    		if(rat_weights[i] <= nth_lowest_weight) {
-    			Integer closest_piper = null;
-    			double dist_closest = Double.MAX_VALUE;
-    			// From all the unassigned pipers, send the closest one towards this rat
-    			for(Integer piper : unassigned_pipers) {
-    				if(Utils.distance(pipers[id][piper], rats[i]) <= dist_closest) {
-    					dist_closest = Utils.distance(pipers[id][piper], rats[i]);
-    					closest_piper = piper;
-    				}
-    			}
-    			// Piper is now assigned, remove from unassigned list
-				unassigned_pipers.remove((Integer) closest_piper);
-				updatePiperGoalPosition(closest_piper, rats[i], false);
-				if(unassigned_pipers.size() == 0) return;
-    		}
-    	// In case we had more pipers than rats, send to closest rat
-    	// I think send to random rat might be better here?
-    	if(unassigned_pipers.size() > 0) {
-    		if(rats.length == 0) return;
-    		Iterator<Integer> iter = unassigned_pipers.iterator();
-    		while(iter.hasNext()) {
-    			Integer piper = iter.next();
-    			Point closest_rat_pos = null;
-    			double closest_rat_dist = Double.MAX_VALUE;
-                for (Point rat : rats) {
-                	// We ignore rats less than 2m from the gate because this will cause conflicts
-                	if(Utils.distance(rat, gateAbsolute) > 2) {
-	                    double dist = Utils.distance(pipers[id][piper], rat);
-	                    if (dist < closest_rat_dist) {
-	                        closest_rat_dist = dist;
-	                        closest_rat_pos = rat;
-	                    }
-                	}
-                }
-                // If all rats are within 2m of gate just sit inside gate and play music
-                if(closest_rat_pos == null) {
-                	stayInBase(piper);
-                } else {
-                	updatePiperGoalPosition(piper, closest_rat_pos, false);
-                }
-    			iter.remove();
-    		}
-    	}
-    	if(unassigned_pipers.size() > 0) {
-    		for(Integer piper : unassigned_pipers)
-    			System.out.println(piper+": "+queuedMoves[piper].get(1).point.x+","+queuedMoves[piper].get(1).point.y);
-    	}
-    }
-    
-    double distanceFunction(Point rat) {
-		// We need to ignore any rats that are being brought in at the moment
-		// Best performance seems to be obtained by going for rats that
-		// are not TOO close (these are very hard for others to steal) and not TOO far
-		// We go for hotly contested ones at a reasonable distance
-    	double y = Utils.distance(rat, gateAbsolute);
-    	if(y <= side/2) y = (side - y)/2;
-    	return y;
-    }
-    
-    void ensureReturningPipersHaveRats(Point[][] pipers, boolean[][] pipers_played, Point[] rats) {
-    	Point[] ourPipers = pipers[id];
-    	
-    	// See if pipers are going back without rats; if so correct them.
-    	for(int piperNum = 0; piperNum < ourPipers.length; ++piperNum) {
-    		if(numRatsInRange(ourPipers[piperNum], rats, RANGE) == 0) {
-        	
-	        	// Piper is outside in the field and returning with zero rats
-	        	// then send it to look for more
-	        	if(pipers_current_order[piperNum] == RETURN_TO_OUTSIDE_GATE)
-	        		updatePiperCurrentOrder(piperNum, TO_GOAL);
-	        	
-	        	// Piper is going through gate with zero rats
-	        	// then send it out of gate
-	        	if(pipers_current_order[piperNum] == GO_THROUGH_GATE)
-	        		updatePiperCurrentOrder(piperNum, LEAVE_GATE);
-    		}
-    	}
-    }
-    
-    void determinePiperDests(Point[][] pipers, boolean[][] pipers_played, Point[] rats) {
-        // We're ignoring other inputs for now, just considering the
-        // rats and the instance variable 'grid'
 
-        int n_pipers = pipers[id].length;
-        ArrayList<Integer> unassigned_pipers = new ArrayList<Integer>();
-        // Consider the "active duty" pipers that are not currently in base
-        // They are either moving towards rats or herding them back (in this
-        // case they change tactics rarely)
-        for (int i = 0; i < n_pipers; ++i)
-            if(pipers_current_order[i] == TO_GOAL || pipers_current_order[i] == RETURN_TO_OUTSIDE_GATE)
-                unassigned_pipers.add(i);
-        assignPipersByCellweights(unassigned_pipers, rats, pipers);
+    void assignGoalByRatDistance(
+            ArrayList<Integer> unassigned_pipers, Point[] rats,
+            Point[][] pipers
+    ) {
+        int n_unassigned = unassigned_pipers.size();
+        double[] ratsDistToGate = new double[rats.length];
+        for (int i = 0; i < ratsDistToGate.length; ++i) {
+            ratsDistToGate[i] = distanceFunction(rats[i]);
+        }
+        // Ensure that there are at least as many rats as pipers
+        // if not first only assign 1 piper to each rat first
+        // Then we assign the rest of the pipers to the closest rat
+        double nth_lowest_weight = Utils.quickSelect(
+                ratsDistToGate, Math.min(n_unassigned, ratsDistToGate.length)
+        );
+        for (int i = 0; i < ratsDistToGate.length; ++i)
+            if (ratsDistToGate[i] <= nth_lowest_weight) {
+                Integer closest_piper = null;
+                double dist_closest = Double.MAX_VALUE;
+                // From all the unassigned pipers, send the closest one
+                // towards this rat
+                for (Integer j : unassigned_pipers) {
+                    double p2r_dist = Utils.distance(pipers[id][j], rats[i]);
+                    if (p2r_dist <= dist_closest) {
+                        dist_closest = Utils.distance(pipers[id][j], rats[i]);
+                        closest_piper = j;
+                    }
+                }
 
-        // Possible (likely) in the case of few rats/sparse map that we
-        // will have ONLY unassigned pipers. I'm also expecting a small
-        // number of unassigned pipers dense maps.
+                if (closest_piper == null) {
+                    throw new Error();
+                }
+
+                // Piper is now assigned, remove from unassigned list
+                unassigned_pipers.remove(closest_piper);
+                updateGoal(closest_piper, rats[i], false);
+                if (unassigned_pipers.size() == 0) return;
+            }
+
+        // In case we had more pipers than rats, send to closest rat
         if (unassigned_pipers.size() > 0) {
-        	assignPipersByRatDistanceFunction(unassigned_pipers, rats, pipers);
+            if (rats.length == 0) return;
+            Iterator<Integer> iter = unassigned_pipers.iterator();
+            while (iter.hasNext()) {
+                Integer piper = iter.next();
+                Point closest_rat_pos = null;
+                double closest_rat_dist = Double.MAX_VALUE;
+                for (Point rat : rats) {
+                    // We ignore rats less than 2m from the gate because
+                    // this will cause conflicts
+                    if (Utils.distance(rat, this.gate) > 3) {
+                        double dist = Utils.distance(pipers[id][piper], rat);
+                        if (dist < closest_rat_dist) {
+                            closest_rat_dist = dist;
+                            closest_rat_pos = rat;
+                        }
+                    }
+                }
+                // If all rats are within 2m of gate just sit inside gate
+                // and play music
+                if (closest_rat_pos == null) {
+                    stayInBase(piper);
+                } else {
+                    updateGoal(piper, closest_rat_pos, false);
+                }
+                iter.remove();
+            }
+        }
+    }
+
+    double distanceFunction(Point rat) {
+        // We need to ignore any rats that are being brought in at the moment
+        // Best performance seems to be obtained by going for rats that
+        // are not TOO close (these are very hard for others to steal) and
+        // not TOO far. We go for hotly contested ones at a reasonable distance
+        double y = Utils.distance(rat, this.gate);
+        if (y <= side / 2) {
+            y = (side - y) / 2;
+        }
+        return y;
+    }
+
+    void ensureReturningPipersHaveRats(Point[] pipers, Point[] rats) {
+        // See if pipers are going back without rats; if so correct them.
+        for (int piper_id = 0; piper_id < pipers.length; ++piper_id) {
+            if (numRatsInRange(pipers[piper_id], rats, PLAY_RAD) == 0) {
+
+                // Piper is outside in the field and returning with zero rats
+                // then send it to look for more
+                if (pos_state[piper_id] == TO_GATE)
+                    pos_state[piper_id] = TO_GOAL;
+
+                // Piper is going through gate with zero rats
+                // then send it out of gate
+                if (pos_state[piper_id] == UNLOAD)
+                    pos_state[piper_id] = AT_GATE;
+            }
         }
     }
 
     /**
      * Number of rats within specified range from the piper.
-     * @param piper
-     * @param rats
-     * @param range
+     *
+     * @param piper The position of a piper.
+     * @param rats  The positions of all the rats.
+     * @param range The music play radius around the piper.
      */
     private static int numRatsInRange(Point piper, Point[] rats, int range) {
-    	int numRats = 0;
+        int numRats = 0;
         for (Point rat : rats) {
             numRats += Utils.distance(piper, rat) <= range ? 1 : 0;
         }
-    	return numRats;
-    }
-
-    /**
-     * Sends piper to position in front of gate where it waits, then enters the gate and waits again for the rats
-     * to enter.
-     * @param piperNumber
-     */
-    private void addGateExitDestination(int piperNumber) {
-    	queuedMoves[piperNumber].add(new PointWrapper(gateAbsolute, false));
-    }
-
-    private void addGateReturnDestinations(int piperNumber) {
-        int DISTANCE_OUTSIDE_GATE = 1;
-        int DISTANCE_INSIDE_GATE = 5;
-        Point pointOutsideGate = NavUtils
-                .transformRelativeToAbsoluteCoordinates(this.id, this.side, gateRelative.x, gateRelative.y + DISTANCE_OUTSIDE_GATE);
-        Point pointInsideGate = NavUtils
-                .transformRelativeToAbsoluteCoordinates(this.id, this.side, gateRelative.x, gateRelative.y - DISTANCE_INSIDE_GATE);
-        queuedMoves[piperNumber].add(new PointWrapper(pointOutsideGate, true));
-        queuedMoves[piperNumber].add(new PointWrapper(pointInsideGate, true));
+        return numRats;
     }
 
     // return next locations on last argument
-    public void play(Point[][] pipers, boolean[][] pipers_played, Point[] rats, Move[] moves) {
-    	ensureReturningPipersHaveRats(pipers, pipers_played, rats);
-        this.grid.updateCellWeights(pipers, pipers_played, rats);
-        determinePiperDests(pipers, pipers_played, rats);
-        
+    public void play(
+            Point[][] pipers, boolean[][] pipers_played, Point[] rats,
+            Move[] moves
+    ) {
+        ensureReturningPipersHaveRats(pipers[id], rats);
+        grid.updateCellWeights(pipers, pipers_played, rats);
 
-        Point[] ourPipers = pipers[id];
-        int numPipers = ourPipers.length;
-
-        for (int piperNum = 0; piperNum < numPipers; piperNum++) {
-        	//Point goal = queuedMoves[piperNum].get(1).point;
-        	//System.out.println("Piper"+piperNum+": "+goal.x+", "+goal.y);
-        	/*if(pipers_current_order[piperNum] != 0) pipers_current_order[piperNum] = TO_GOAL;
-            if(piperNum == 0) {
-            	updatePiperGoalPosition(piperNum, new Point(0, 0), false);
-            	System.out.println("piper0: "+pipers[id][0].x+","+pipers[id][0].y);
+        ArrayList<Integer> idle_pipers = new ArrayList<Integer>();
+        // Consider the "active duty" pipers that are not currently in base
+        // They are either moving towards rats or herding them back (in this
+        // case they change tactics rarely)
+        for (int i = 0; i < pipers[id].length; ++i) {
+            if (pos_state[i] == TO_GOAL || pos_state[i] == TO_GATE) {
+                idle_pipers.add(i);
             }
-            if(piperNum == 1) {
-            	updatePiperGoalPosition(piperNum, new Point(30, 40), false);
-            	System.out.println("piper1: "+pipers[id][1].x+","+pipers[id][1].y);
-            }*/
-            
-        	Point source = ourPipers[piperNum];
-            PointWrapper destinationWrapper = getPiperDestination(piperNum);
-            Point destination = destinationWrapper.point;
-            System.out.println("piper"+piperNum+": "+pipers_current_order[piperNum]+": "+destination.x+", "+destination.y);
-            //if(destination.x == 0 && destination.y == 0)
-            //	System.out.println(piperNum);
-            boolean playOnRouteToDestination = destinationWrapper.play;
+        }
+
+        // We begin by assigning pipers based on cell weights first.
+        assignGoalByCellWeights(idle_pipers, rats, pipers);
+
+        // Possible (likely) in the case of few rats/sparse map that we
+        // will have ONLY unassigned pipers. I'm also expecting a small
+        // number of unassigned pipers dense maps.
+        if (idle_pipers.size() > 0) {
+            assignGoalByRatDistance(idle_pipers, rats, pipers);
+        }
+
+        for (int piper_id = 0; piper_id < pipers[id].length; piper_id++) {
+            Point src = pipers[id][piper_id];
+            PiperDest trg = movesQueue.get(piper_id).get(pos_state[piper_id]);
 
             // If destination is null then stay in same position
-            if (destination == null) {
-                destination = source;
+            if (trg.point == null) {
+                trg.point = src;
             }
-            
-            double EPSILON = GATE_EPSILON;            
-            if(pipers_current_order[piperNum] == TO_GOAL)
-            	EPSILON = RAT_EPSILON;
 
-            if (NavUtils.isDestinationReached(source, destination, EPSILON)) {
-            	incrementPiperOrder(piperNum);
-            	destinationWrapper = getPiperDestination(piperNum);
-            	destination = destinationWrapper.point;
-            	playOnRouteToDestination = destinationWrapper.play;
-            }
-            
-            moves[piperNum] = NavUtils.creatMove(source, destination, playOnRouteToDestination);
-            
-            /* @Sagar: Please make necessary changes
-            int range = 10;
+            double EPSILON = GATE_EPSILON;
+            if (pos_state[piper_id] == TO_GOAL)
+                EPSILON = RAT_EPSILON;
 
-            // Different epsilons for gate and rat, since we dont need to be too close in the case of rats
-            // But we need high precision to ensure we get through the gate properly with the rats
-            const double GATE_EPSILON = 0.000001;
-            const double RAT_EPSILON = 2;
-            // If position is reached, ie. distance between src and destination is within some epsilon
-            if ((Math.abs(src.x - dst.x) < GATE_EPSILON &&
-                    Math.abs(src.y - dst.y) < GATE_EPSILON) || 
-                    (Utils.distance(src, dst) < RAT_EPSILON && moveNum == 1)) {
+            if (Utils.isAtDest(src, trg.point, EPSILON)) {
+                // Progress the movement to the next step.
+                pos_state[piper_id] = (pos_state[piper_id] + 1) % 4;
+                // Assign next destination.
+                trg = movesQueue.get(piper_id).get(pos_state[piper_id]);
             }
-            */
+            moves[piper_id] = Utils.creatMove(src, trg.point, trg.play);
         }
     }
 }
