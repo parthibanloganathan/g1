@@ -10,7 +10,7 @@ public class Player implements pppp.sim.Player {
     // see details below
     private int id = -1;
     private int side = 0;
-
+    
     private int[] pos_state;
 //    private Random gen = new Random();
 
@@ -49,7 +49,7 @@ public class Player implements pppp.sim.Player {
         this.gate = Utils.point(0.0, side * 0.5, neg_y, swap);
         this.gate_in = Utils.point(0.0, side * 0.5 + IN_GATE, neg_y, swap);
         Point gate_out = Utils.point(0.0, side * 0.5 - FROM_GATE, neg_y, swap);
-
+        
         pos_state = new int[numPipers];
         for (int i = 0; i < pos_state.length; ++i)
             pos_state[i] = AT_GATE;
@@ -119,6 +119,8 @@ public class Player implements pppp.sim.Player {
         for (Cell cell : cells) {
             sum_weights += cell.weight;
         }
+        
+        int n_idle = idle_pipers.size();
 
         // Cicles through the highest rated cell first and downwards.
         for (Cell cell : cells) {
@@ -128,7 +130,7 @@ public class Player implements pppp.sim.Player {
             // Probably need to reweight/increase this artificially too
             // Temporarily changing the formula to only consider cells with
             // atleast twice average weight seems to have fixed this
-            int pipers2cell = idle_pipers.size() * (cell.weight / sum_weights);
+            int pipers2cell = n_idle * (cell.weight / sum_weights);
             if (pipers2cell == 0)
                 break;
 
@@ -211,9 +213,9 @@ public class Player implements pppp.sim.Player {
                 Point closest_rat_pos = null;
                 double closest_rat_dist = Double.MAX_VALUE;
                 for (Point rat : rats) {
-                    // We ignore rats less than 2m from the gate because
+                    // We ignore rats less than 10m from the gate because
                     // this will cause conflicts
-                    if (Utils.distance(rat, this.gate) > 3) {
+                    if (Utils.distance(rat, this.gate) > 10) {
                         double dist = Utils.distance(pipers[id][piper], rat);
                         if (dist < closest_rat_dist) {
                             closest_rat_dist = dist;
@@ -221,7 +223,7 @@ public class Player implements pppp.sim.Player {
                         }
                     }
                 }
-                // If all rats are within 2m of gate just sit inside gate
+                // If all rats are within 10m of gate just sit inside gate
                 // and play music
                 if (closest_rat_pos == null) {
                     stayInBase(piper);
@@ -239,7 +241,10 @@ public class Player implements pppp.sim.Player {
         // are not TOO close (these are very hard for others to steal) and
         // not TOO far. We go for hotly contested ones at a reasonable distance
         double y = Utils.distance(rat, this.gate);
-        if (y <= side / 2) {
+        // Also we want to ignore rats too close to gate
+        if (y <= 5) {
+        	y = Double.MAX_VALUE;
+        } else if (y <= side / 2) {
             y = (side - y) / 2;
         }
         return y;
@@ -309,7 +314,7 @@ public class Player implements pppp.sim.Player {
         for (int piper_id = 0; piper_id < pipers[id].length; piper_id++) {
             Point src = pipers[id][piper_id];
             PiperDest trg = movesQueue.get(piper_id).get(pos_state[piper_id]);
-
+            
             // If destination is null then stay in same position
             if (trg.point == null) {
                 trg.point = src;
