@@ -21,6 +21,6 @@ public class Cell implements Comparable<Cell> {
     }
 
     public int compareTo(Cell other) {
-        return Integer.compare(this.weight, other.weight);
+        return -Integer.compare(this.weight, other.weight);
     }
 }
