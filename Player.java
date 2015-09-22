@@ -79,12 +79,11 @@ public class Player implements pppp.sim.Player {
         }
     }
 
-    ArrayList<Cell> getImportantCells(Grid grid, Point[] rats) {
-        ArrayList<Cell> cells = new ArrayList<Cell>();
+    Queue<Cell> getImportantCells(Grid grid, Point[] rats) {
+        Queue<Cell> cells = new PriorityQueue<Cell>();
         for (Cell[] row : grid.grid) {
             Collections.addAll(cells, row);
         }
-        cells.sort(null);
         Iterator<Cell> cellIter = cells.iterator();
 
         // What we're going to do is only consider cells with over twice the
@@ -114,16 +113,18 @@ public class Player implements pppp.sim.Player {
     void assignGoalByCellWeights(
             ArrayList<Integer> idle_pipers, Point[] rats, Point[][] pipers
     ) {
-        ArrayList<Cell> cells = getImportantCells(grid, rats);
+        Queue<Cell> cells = getImportantCells(grid, rats);
         int sum_weights = 0;
         for (Cell cell : cells) {
+        	System.out.print(cell.weight+",");
             sum_weights += cell.weight;
         }
         
         int n_idle = idle_pipers.size();
 
         // Cicles through the highest rated cell first and downwards.
-        for (Cell cell : cells) {
+        while (!cells.isEmpty()) {
+        	Cell cell = cells.poll();
             if (sum_weights == 0 || idle_pipers.size() == 0 || cell.weight <= 1)
                 break;
 
