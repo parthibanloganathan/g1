@@ -13,10 +13,11 @@ public class Grid {
      * @param side   Side of the grid.
      * @param slices Number of devisions by which to devide the side.
      */
-    public Grid(int side, int slices) {
+    public Grid(int side, double cellSize) {
         // The board consists of size^2 number of square cells.
         this.side = side;
-        cellSize = (double) side / slices;
+        this.cellSize = cellSize;
+        int slices = (int) (side / cellSize);
         double offset = (double) side / 2;
         this.grid = new Cell[slices][slices];
         for (int i = 0; i < slices; i++) {

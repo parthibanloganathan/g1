@@ -20,7 +20,7 @@ public class Player implements pppp.sim.Player {
     final int UNLOAD = 3;
 
     final int PLAY_RAD = 10;
-    final int GRID_SLICES = 5;
+    final int GRID_CELLSIZE = 20;
     final double GATE_EPSILON = 0.00001;
     final double RAT_EPSILON = 2;
     final double FROM_GATE = 1;
@@ -65,7 +65,7 @@ public class Player implements pppp.sim.Player {
         }
 
         // Initialize the grid of cells
-        this.grid = new Grid(side, GRID_SLICES);
+        this.grid = new Grid(side, GRID_CELLSIZE);
     }
 
     void updateGoal(int piperNum, Point newGoal, boolean playMusic) {
@@ -282,7 +282,7 @@ public class Player implements pppp.sim.Player {
         }
         return numRats;
     }
-
+    
     // return next locations on last argument
     public void play(
             Point[][] pipers, boolean[][] pipers_played, Point[] rats,
