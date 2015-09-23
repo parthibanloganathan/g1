@@ -35,6 +35,8 @@ public class Player implements pppp.sim.Player {
     private Grid grid;
     private Point gate;
     private Point gate_in;
+    
+    private int ticks;
 
     // specify location that the player will alternate between
     public void init(
@@ -66,6 +68,8 @@ public class Player implements pppp.sim.Player {
 
         // Initialize the grid of cells
         this.grid = new Grid(side, GRID_CELLSIZE);
+        
+        ticks = 0;
     }
 
     void updateGoal(int piperNum, Point newGoal, boolean playMusic) {
@@ -95,7 +99,7 @@ public class Player implements pppp.sim.Player {
         while (cellIter.hasNext()) {
             Cell cell = cellIter.next();
             // Discard cells that don't have high weight or are close by
-            if (cell.weight <= 2 * avg_weight ||
+            if (cell.weight <= 1.3 * avg_weight ||
                     Utils.distance(cell.center, this.gate) < 20) {
                 cellIter.remove();
             }
@@ -116,7 +120,6 @@ public class Player implements pppp.sim.Player {
         Queue<Cell> cells = getImportantCells(grid, rats);
         int sum_weights = 0;
         for (Cell cell : cells) {
-        	System.out.print(cell.weight+",");
             sum_weights += cell.weight;
         }
         
@@ -154,7 +157,7 @@ public class Player implements pppp.sim.Player {
                     // Send piper to this cell, while not playing music
                     double dist = Utils.distance(cell.center, movesQueue.get(i).get(1).point);
                     int n_rats = numRatsInRange(pipers[id][i], rats, PLAY_RAD);
-                    if (dist < 2 * grid.cellSize && n_rats < 3) {
+                    if (dist < 2 * grid.cellSize) {
                         updateGoal(i, cell.center, false);
                     }
                     idle_pipers.remove((Integer) i);
@@ -226,11 +229,7 @@ public class Player implements pppp.sim.Player {
                 }
                 // If all rats are within 10m of gate just sit inside gate
                 // and play music
-                if (closest_rat_pos == null) {
-                    stayInBase(piper);
-                } else {
-                    updateGoal(piper, closest_rat_pos, false);
-                }
+                updateGoal(piper, closest_rat_pos, false);
                 iter.remove();
             }
         }
@@ -254,7 +253,10 @@ public class Player implements pppp.sim.Player {
     void ensureReturningPipersHaveRats(Point[] pipers, Point[] rats) {
         // See if pipers are going back without rats; if so correct them.
         for (int piper_id = 0; piper_id < pipers.length; ++piper_id) {
-            if (numRatsInRange(pipers[piper_id], rats, PLAY_RAD) == 0) {
+        	double radius = PLAY_RAD;
+        	if(rats.length < pipers.length)
+        		radius = 2.5;
+            if (numRatsInRange(pipers[piper_id], rats, radius) == 0) {
 
                 // Piper is outside in the field and returning with zero rats
                 // then send it to look for more
@@ -276,7 +278,7 @@ public class Player implements pppp.sim.Player {
      * @param rats  The positions of all the rats.
      * @param range The music play radius around the piper.
      */
-    private static int numRatsInRange(Point piper, Point[] rats, int range) {
+    private static int numRatsInRange(Point piper, Point[] rats, double range) {
         int numRats = 0;
         for (Point rat : rats) {
             numRats += Utils.distance(piper, rat) <= range ? 1 : 0;
@@ -289,6 +291,8 @@ public class Player implements pppp.sim.Player {
             Point[][] pipers, boolean[][] pipers_played, Point[] rats,
             Move[] moves
     ) {
+    	++ticks;
+    	//if(ticks%30 == 0) System.out.println(grid);
         ensureReturningPipersHaveRats(pipers[id], rats);
         grid.updateCellWeights(pipers, pipers_played, rats);
 
@@ -316,11 +320,6 @@ public class Player implements pppp.sim.Player {
             Point src = pipers[id][piper_id];
             PiperDest trg = movesQueue.get(piper_id).get(pos_state[piper_id]);
             
-            // If destination is null then stay in same position
-            if (trg.point == null) {
-                trg.point = src;
-            }
-
             double EPSILON = GATE_EPSILON;
             if (pos_state[piper_id] == TO_GOAL)
                 EPSILON = RAT_EPSILON;
@@ -328,9 +327,18 @@ public class Player implements pppp.sim.Player {
             if (Utils.isAtDest(src, trg.point, EPSILON)) {
                 // Progress the movement to the next step.
                 pos_state[piper_id] = (pos_state[piper_id] + 1) % 4;
+                // If we're in base and more rats are still around, wait for them to get in!
+                if (pos_state[piper_id] == AT_GATE && numRatsInRange(src, rats, PLAY_RAD) > 0)
+                	pos_state[piper_id] = UNLOAD;
                 // Assign next destination.
                 trg = movesQueue.get(piper_id).get(pos_state[piper_id]);
             }
+            
+            // If destination is null then stay in same position
+            if (trg.point == null) {
+                trg.point = src;
+            }
+            
             moves[piper_id] = Utils.creatMove(src, trg.point, trg.play);
         }
     }
