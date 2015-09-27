@@ -10,7 +10,7 @@ public class Player implements pppp.sim.Player {
     // see details below
     private int id = -1;
     private int side = 0;
-    
+
     private int[] pos_state;
 //    private Random gen = new Random();
 
@@ -32,7 +32,7 @@ public class Player implements pppp.sim.Player {
 
     // Divide the board into a grid of cells. Each cell in the grid is
     // evaluated as a potential destination for a piper.
-    private Grid grid;
+    private KMeans grid;
     private Point gate;
     private Point gate_in;
 
@@ -65,7 +65,7 @@ public class Player implements pppp.sim.Player {
         }
 
         // Initialize the grid of cells
-        this.grid = new Grid(side, GRID_CELLSIZE);
+        this.grid = new KMeans(side);
     }
 
     void updateGoal(int piperNum, Point newGoal, boolean playMusic) {
@@ -79,28 +79,29 @@ public class Player implements pppp.sim.Player {
         }
     }
 
-    Queue<Cell> getImportantCells(Grid grid, Point[] rats) {
-        Queue<Cell> cells = new PriorityQueue<Cell>();
-        for (Cell[] row : grid.grid) {
-            Collections.addAll(cells, row);
+    Queue<Cluster> getImportantCells(KMeans grid, Point[] rats) {
+        ArrayList<Cluster> clusters = grid.getClusters();
+        Queue<Cluster> pq_clust = new PriorityQueue<Cluster>();
+        for (Cluster each : clusters) {
+            pq_clust.add(each);
         }
-        Iterator<Cell> cellIter = cells.iterator();
+        Iterator<Cluster> clustIter = pq_clust.iterator();
 
         // What we're going to do is only consider cells with over twice the
         // average weight that are not literally at our gate (this would
         // basically lock pipers into base).
 
         // expected number of rats per cell
-        double avg_weight = rats.length / cells.size();
-        while (cellIter.hasNext()) {
-            Cell cell = cellIter.next();
+        double avg_weight = rats.length / clusters.size();
+        while (clustIter.hasNext()) {
+            Cluster clust = clustIter.next();
             // Discard cells that don't have high weight or are close by
-            if (cell.weight <= 2 * avg_weight ||
-                    Utils.distance(cell.center, this.gate) < 20) {
-                cellIter.remove();
+            if (clust.weight <= 2 * avg_weight ||
+                    Utils.distance(clust.centroid, this.gate) < 20) {
+                clustIter.remove();
             }
         }
-        return cells;
+        return pq_clust;
     }
 
     /**
@@ -113,32 +114,31 @@ public class Player implements pppp.sim.Player {
     void assignGoalByCellWeights(
             ArrayList<Integer> idle_pipers, Point[] rats, Point[][] pipers
     ) {
-        Queue<Cell> cells = getImportantCells(grid, rats);
+        Queue<Cluster> clusters = getImportantCells(grid, rats);
         int sum_weights = 0;
-        for (Cell cell : cells) {
-        	System.out.print(cell.weight+",");
-            sum_weights += cell.weight;
+        for (Cluster cluster : clusters) {
+            sum_weights += cluster.weight;
         }
         
         int n_idle = idle_pipers.size();
 
         // Cicles through the highest rated cell first and downwards.
-        while (!cells.isEmpty()) {
-        	Cell cell = cells.poll();
-            if (sum_weights == 0 || idle_pipers.size() == 0 || cell.weight <= 1)
+        while (!clusters.isEmpty()) {
+        	Cluster cluster = clusters.poll();
+            if (sum_weights == 0 || idle_pipers.size() == 0 || cluster.weight <= 1)
                 break;
 
             // Probably need to reweight/increase this artificially too
             // Temporarily changing the formula to only consider cells with
             // atleast twice average weight seems to have fixed this
-            int pipers2cell = n_idle * (cell.weight / sum_weights);
+            int pipers2cell = n_idle * (cluster.weight / sum_weights);
             if (pipers2cell == 0)
                 break;
 
             double[] dists = new double[pipers[id].length];
             for (int piper_id = 0; piper_id < pipers[id].length; ++piper_id) {
                 dists[piper_id] = Utils.distance(
-                        cell.center, pipers[id][piper_id]
+                        cluster.centroid, pipers[id][piper_id]
                 );
 
                 // If the piper is busy/assigned, set dist to MAX
@@ -152,10 +152,10 @@ public class Player implements pppp.sim.Player {
             for (int i = 0; i < pipers[id].length; ++i)
                 if (dists[i] <= nth_smallest && dists[i] != Double.MAX_VALUE) {
                     // Send piper to this cell, while not playing music
-                    double dist = Utils.distance(cell.center, movesQueue.get(i).get(1).point);
+                    double dist = Utils.distance(cluster.centroid, movesQueue.get(i).get(1).point);
                     int n_rats = numRatsInRange(pipers[id][i], rats, PLAY_RAD);
-                    if (dist < 2 * grid.cellSize && n_rats < 3) {
-                        updateGoal(i, cell.center, false);
+                    if (n_rats < 3) {
+                        updateGoal(i, cluster.centroid, false);
                     }
                     idle_pipers.remove((Integer) i);
 
@@ -245,8 +245,8 @@ public class Player implements pppp.sim.Player {
         // Also we want to ignore rats too close to gate
         if (y <= 5) {
         	y = Double.MAX_VALUE;
-        } else if (y <= side / 2) {
-            y = (side - y) / 2;
+        } else {
+            y = Math.pow((y - 40), 2);
         }
         return y;
     }
@@ -254,7 +254,11 @@ public class Player implements pppp.sim.Player {
     void ensureReturningPipersHaveRats(Point[] pipers, Point[] rats) {
         // See if pipers are going back without rats; if so correct them.
         for (int piper_id = 0; piper_id < pipers.length; ++piper_id) {
-            if (numRatsInRange(pipers[piper_id], rats, PLAY_RAD) == 0) {
+            double radius = PLAY_RAD;
+            if (rats.length < pipers.length) {
+                radius = 5;
+            }
+            if (numRatsInRange(pipers[piper_id], rats, radius) == 0) {
 
                 // Piper is outside in the field and returning with zero rats
                 // then send it to look for more
@@ -276,7 +280,7 @@ public class Player implements pppp.sim.Player {
      * @param rats  The positions of all the rats.
      * @param range The music play radius around the piper.
      */
-    private static int numRatsInRange(Point piper, Point[] rats, int range) {
+    private static int numRatsInRange(Point piper, Point[] rats, double range) {
         int numRats = 0;
         for (Point rat : rats) {
             numRats += Utils.distance(piper, rat) <= range ? 1 : 0;
@@ -289,8 +293,10 @@ public class Player implements pppp.sim.Player {
             Point[][] pipers, boolean[][] pipers_played, Point[] rats,
             Move[] moves
     ) {
+        grid.init(rats, 10);
+
         ensureReturningPipersHaveRats(pipers[id], rats);
-        grid.updateCellWeights(pipers, pipers_played, rats);
+        grid.updateClusterWeights(pipers, pipers_played, rats);
 
         ArrayList<Integer> idle_pipers = new ArrayList<Integer>();
         // Consider the "active duty" pipers that are not currently in base
