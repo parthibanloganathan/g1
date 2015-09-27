@@ -66,7 +66,7 @@ public class Grid {
         }
 
         // Decrement cell weight for each opponent it contains
-        for (int id = 0; id < 4; id++) {
+        for (int id = 0; id < pipers.length; id++) {
             if (id != our_id) {
                 for (Point opponent_piper : pipers[id]) {
                     Cell cell = getCellContainingPoint(opponent_piper);

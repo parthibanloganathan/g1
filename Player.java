@@ -11,9 +11,11 @@ public class Player implements pppp.sim.Player {
     private int id = -1;
     private int side = 0;
     
-    private PiperState[] pos_state;
+    private PiperState[] piper_states;
 
-    final int PLAY_RAD = 10;
+    final int INFLUENCE_RADIUS = 10;
+    final int INFLUENCE_MIN_DIS = 2;
+    final int PLAY_RAD = INFLUENCE_RADIUS;
     final int GRID_CELLSIZE = 20;
     final double GATE_EPSILON = 0.00001;
     final double RAT_EPSILON = 2;
@@ -46,9 +48,9 @@ public class Player implements pppp.sim.Player {
         this.gate_in = Utils.point(0.0, side * 0.5 + IN_GATE, neg_y, swap);
         Point gate_out = Utils.point(0.0, side * 0.5 - FROM_GATE, neg_y, swap);
 
-        pos_state = new PiperState[numPipers];
-        for (int i = 0; i < pos_state.length; ++i)
-            pos_state[i] = PiperState.AT_GATE;
+        piper_states = new PiperState[numPipers];
+        for (int i = 0; i < piper_states.length; ++i)
+            piper_states[i] = PiperState.AT_GATE;
 
         this.movesQueue = new ArrayList<ArrayList<PiperDest>>(numPipers);
         for (int i = 0; i < numPipers; ++i) {
@@ -93,8 +95,8 @@ public class Player implements pppp.sim.Player {
         while (cellIter.hasNext()) {
             Cell cell = cellIter.next();
             // Discard cells that don't have high weight or are close by
-            if (cell.weight <= 1.3 * avg_weight ||
-                    Utils.distance(cell.center, this.gate) < 20) {
+            if (cell.weight <= 1.3 * avg_weight ||  // TODO: Empirically evaluate the coefficent
+                    Utils.distance(cell.center, this.gate) < GRID_CELLSIZE) {
                 cellIter.remove();
             }
         }
@@ -152,58 +154,84 @@ public class Player implements pppp.sim.Player {
                     // Send piper to this cell, while not playing music
                     double dist = Utils.distance(cell.center, movesQueue.get(i).get(1).point);
                     int n_rats = numRatsInRange(pipers[id][i], rats, PLAY_RAD);
-                    if (dist < 2 * grid.cellSize) {
+                    if (dist < 2 * GRID_CELLSIZE) {
                         updateGoal(i, cell.center, false);
                     }
                     idle_pipers.remove((Integer) i);
 
-                    if (dists[i] > 20 && n_rats < 3) {
-                        pos_state[i] = PiperState.TO_GOAL;
+                    if (dists[i] > GRID_CELLSIZE && n_rats < 3) {
+                        piper_states[i] = PiperState.TO_GOAL;
                     }
                 }
         }
     }
 
+    /**
+     * Returns the number of opponents near a rat.
+     * @param rat
+     * @param pipers
+     * @param our_id
+     */
+    public int numOpponentsNearRat(Point rat, Point[][] pipers, int our_id) {
+        int num_opponents_near_rat = 0;
+        for (int id = 0; id < pipers.length; id++) {
+            if (id != our_id) {
+                for (Point opponent_piper : pipers[id]) {
+                    // If opponent is within 2 ticks from rat, count the opponent as close to the rat.
+                    if (Utils.distance(opponent_piper, rat) < 2*INFLUENCE_RADIUS) {
+                        num_opponents_near_rat++;
+                    }
+                }
+            }
+        }
+        return num_opponents_near_rat;
+    }
+
+    /**
+     * Assign pipers to collect closest rats. This is used once the heaviest weight cells have been picked and the
+     * unassigned pipers need to collect rats.
+     * @param unassigned_pipers
+     * @param rats
+     * @param pipers
+     */
     void assignGoalByRatDistance(
             ArrayList<Integer> unassigned_pipers, Point[] rats,
             Point[][] pipers
     ) {
         int n_unassigned = unassigned_pipers.size();
-        double[] ratsDistToGate = new double[rats.length];
-        for (int i = 0; i < ratsDistToGate.length; ++i) {
-            ratsDistToGate[i] = distanceFunction(rats[i]);
+
+        // Set rat priority
+        double[] ratsPriority = new double[rats.length];
+        for (int i = 0; i < ratsPriority.length; ++i) {
+            ratsPriority[i] = evaluateRatPriority(rats[i], pipers, id);
         }
+
         // Ensure that there are at least as many rats as pipers
         // if not first only assign 1 piper to each rat first
         // Then we assign the rest of the pipers to the closest rat
-        double nth_lowest_weight = Utils.quickSelect(
-                ratsDistToGate, Math.min(n_unassigned, ratsDistToGate.length)
+        double nth_priority = Utils.quickSelect(
+                ratsPriority, Math.min(n_unassigned, ratsPriority.length)
         );
-        for (int i = 0; i < ratsDistToGate.length; ++i)
-            if (ratsDistToGate[i] <= nth_lowest_weight) {
-                Integer closest_piper = null;
-                double dist_closest = Double.MAX_VALUE;
-                // From all the unassigned pipers, send the closest one
-                // towards this rat
-                for (Integer j : unassigned_pipers) {
-                    double p2r_dist = Utils.distance(pipers[id][j], rats[i]);
-                    if (p2r_dist <= dist_closest) {
-                        dist_closest = Utils.distance(pipers[id][j], rats[i]);
-                        closest_piper = j;
-                    }
+
+        for (int i = 0; i < ratsPriority.length; ++i)
+            if (ratsPriority[i] <= nth_priority) {
+                // From all the unassigned pipers, send the closest ones
+                // towards this rat. May send multiple pipers if the rat has opponents nearby.
+                int num_pipers_needed = numOpponentsNearRat(rats[i], pipers, id) + 1;
+                ArrayList<Integer> nClosestPipers =
+                        getIdsOfOurNClosestPipers(num_pipers_needed, rats[i], pipers[id], unassigned_pipers);
+
+                for (int closePiper : nClosestPipers) {
+                    // Piper is now assigned, remove from unassigned list
+                    unassigned_pipers.remove(closePiper);
+                    // Send piper to goal
+                    updateGoal(closePiper, rats[i], false);
                 }
 
-                if (closest_piper == null) {
-                    throw new Error();
-                }
-
-                // Piper is now assigned, remove from unassigned list
-                unassigned_pipers.remove(closest_piper);
-                updateGoal(closest_piper, rats[i], false);
                 if (unassigned_pipers.size() == 0) return;
             }
 
-        // In case we had more pipers than rats, send to closest rat
+        // In case we have additional pipers to spare
         if (unassigned_pipers.size() > 0) {
             if (rats.length == 0) return;
             Iterator<Integer> iter = unassigned_pipers.iterator();
@@ -214,7 +242,7 @@ public class Player implements pppp.sim.Player {
                 for (Point rat : rats) {
                     // We ignore rats less than 10m from the gate because
                     // this will cause conflicts
-                    if (Utils.distance(rat, this.gate) > 10) {
+                    if (Utils.distance(rat, this.gate) > INFLUENCE_RADIUS) {
                         double dist = Utils.distance(pipers[id][piper], rat);
                         if (dist < closest_rat_dist) {
                             closest_rat_dist = dist;
@@ -230,19 +258,50 @@ public class Player implements pppp.sim.Player {
         }
     }
 
-    double distanceFunction(Point rat) {
-        // We need to ignore any rats that are being brought in at the moment
-        // Best performance seems to be obtained by going for rats that
-        // are not TOO close (these are very hard for others to steal) and
-        // not TOO far. We go for hotly contested ones at a reasonable distance
-        double y = Utils.distance(rat, this.gate);
-        // Also we want to ignore rats too close to gate
-        if (y <= 5) {
-        	y = Double.MAX_VALUE;
-        } else if (y <= side / 2) {
-            y = (side - y) / 2;
+    /**
+     * Get n closest of available pipers to a specified point.
+     * @param n
+     * @param p
+     * @param pipers
+     * @param available_pipers
+     */
+    ArrayList<Integer> getIdsOfOurNClosestPipers(int n, Point p, Point[] pipers, ArrayList<Integer> available_pipers) {
+        PriorityQueue<PointWeight> closestPipers = new PriorityQueue<PointWeight>();
+        ArrayList<Integer> nClosestPipers = new ArrayList<Integer>();
+
+        for (int i = 0; i < pipers.length; i++) {
+            if (available_pipers.contains(i)) {
+                Point piper = pipers[i];
+                double dist = Utils.distance(p, piper);
+                closestPipers.add(new PointWeight(i, piper, dist));
+            }
         }
-        return y;
+
+        while (n > 0) {
+            nClosestPipers.add(closestPipers.poll().id);
+            n--;
+        }
+
+        return nClosestPipers;
+    }
+
+    /**
+     * Evaluates how much we want this rat depending on distance and number of opponents in its vicinity.
+     * @param rat
+     */
+    double evaluateRatPriority(Point rat, Point[][] pipers, int id) {
+        // The closer the priority is to 0, the more we want the rat.
+        double priority;
+        double dist = Utils.distance(rat, this.gate);
+        // We don't want to prioritize rats close to gate too much since they are easy to catch
+        if (dist <= INFLUENCE_RADIUS) {
+            priority = 2*dist;  // TODO: Empirically evaluate the coefficent
+        } else {
+            priority = dist;
+        }
+        // The more opponents near the rat, the lower the priority.
+        priority += numOpponentsNearRat(rat, pipers, id); // TODO: Empirically evaluate the coefficent
+        return priority;
     }
 
     void ensureReturningPipersHaveRats(Point[] pipers, Point[] rats) {
@@ -250,18 +309,18 @@ public class Player implements pppp.sim.Player {
         for (int piper_id = 0; piper_id < pipers.length; ++piper_id) {
         	double radius = PLAY_RAD;
         	if(rats.length < pipers.length)
-        		radius = 2.5;
+        		radius = INFLUENCE_MIN_DIS + 0.5;
             if (numRatsInRange(pipers[piper_id], rats, radius) == 0) {
 
                 // Piper is outside in the field and returning with zero rats
                 // then send it to look for more
-                if (pos_state[piper_id] == PiperState.TO_GATE)
-                    pos_state[piper_id] = PiperState.TO_GOAL;
+                if (piper_states[piper_id] == PiperState.TO_GATE)
+                    piper_states[piper_id] = PiperState.TO_GOAL;
 
                 // Piper is going through gate with zero rats
                 // then send it out of gate
-                if (pos_state[piper_id] == PiperState.UNLOAD)
-                    pos_state[piper_id] = PiperState.AT_GATE;
+                if (piper_states[piper_id] == PiperState.UNLOAD)
+                    piper_states[piper_id] = PiperState.AT_GATE;
             }
         }
     }
@@ -296,7 +355,7 @@ public class Player implements pppp.sim.Player {
         // They are either moving towards rats or herding them back (in this
         // case they change tactics rarely)
         for (int i = 0; i < pipers[id].length; ++i) {
-            if (pos_state[i] == PiperState.TO_GOAL || pos_state[i] == PiperState.TO_GATE) {
+            if (piper_states[i] == PiperState.TO_GOAL || piper_states[i] == PiperState.TO_GATE) {
                 idle_pipers.add(i);
             }
         }
@@ -313,20 +372,20 @@ public class Player implements pppp.sim.Player {
 
         for (int piper_id = 0; piper_id < pipers[id].length; piper_id++) {
             Point src = pipers[id][piper_id];
-            PiperDest target = movesQueue.get(piper_id).get(pos_state[piper_id].ordinal());
+            PiperDest target = movesQueue.get(piper_id).get(piper_states[piper_id].ordinal());
 
             double EPSILON = GATE_EPSILON;
-            if (pos_state[piper_id] == PiperState.TO_GOAL)
+            if (piper_states[piper_id] == PiperState.TO_GOAL)
                 EPSILON = RAT_EPSILON;
 
             if (Utils.isAtDest(src, target.point, EPSILON)) {
                 // Progress the movement to the next step.
-                pos_state[piper_id] = pos_state[piper_id].nextState();
+                piper_states[piper_id] = piper_states[piper_id].nextState();
                 // If we're in base and more rats are still around, wait for them to get in!
-                if (pos_state[piper_id] == PiperState.AT_GATE && numRatsInRange(src, rats, PLAY_RAD) > 0)
-                	pos_state[piper_id] = PiperState.UNLOAD;
+                if (piper_states[piper_id] == PiperState.AT_GATE && numRatsInRange(src, rats, PLAY_RAD) > 0)
+                	piper_states[piper_id] = PiperState.UNLOAD;
                 // Assign next destination.
-                target = movesQueue.get(piper_id).get(pos_state[piper_id].ordinal());
+                target = movesQueue.get(piper_id).get(piper_states[piper_id].ordinal());
             }
             
             // If destination is null then stay in same position
