@@ -11,7 +11,7 @@ public class Grid {
      * Create a grid of square cells each of side length size.
      *
      * @param side   Side of the grid.
-     * @param slices Number of devisions by which to devide the side.
+     * @param cellSize Number of devisions by which to devide the side.
      */
     public Grid(int side, double cellSize) {
         // The board consists of size^2 number of square cells.
