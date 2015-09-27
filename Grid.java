@@ -43,9 +43,10 @@ public class Grid {
      * @param pipers        The positions of all the pipers on the board.
      * @param pipers_played The state of playing music for all the pipers.
      * @param rats          The positions for all rats on the board.
+     * @param id            The user's group id
      */
     public void updateCellWeights(
-            Point[][] pipers, boolean[][] pipers_played, Point[] rats
+            Point[][] pipers, boolean[][] pipers_played, Point[] rats, int our_id
     ) {
         // Reset cell weights
         for (Cell[] row : this.grid) {
@@ -55,10 +56,24 @@ public class Grid {
         }
 
         // Compute each cell's weight
+
+        // Increment cell weight for each rat it contains
         for (Point rat : rats) {
             Cell cell = getCellContainingPoint(rat);
             if (cell != null) {
                 cell.weight++;
+            }
+        }
+
+        // Decrement cell weight for each opponent it contains
+        for (int id = 0; id < 4; id++) {
+            if (id != our_id) {
+                for (Point opponent_piper : pipers[id]) {
+                    Cell cell = getCellContainingPoint(opponent_piper);
+                    if (cell != null) {
+                        cell.weight = cell.weight - 2; // penalize the cell if it already has opponents in it
+                    }
+                }
             }
         }
     }

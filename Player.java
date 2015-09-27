@@ -11,13 +11,7 @@ public class Player implements pppp.sim.Player {
     private int id = -1;
     private int side = 0;
     
-    private int[] pos_state;
-//    private Random gen = new Random();
-
-    final int AT_GATE = 0;
-    final int TO_GOAL = 1;
-    final int TO_GATE = 2;
-    final int UNLOAD = 3;
+    private PiperState[] pos_state;
 
     final int PLAY_RAD = 10;
     final int GRID_CELLSIZE = 20;
@@ -51,10 +45,10 @@ public class Player implements pppp.sim.Player {
         this.gate = Utils.point(0.0, side * 0.5, neg_y, swap);
         this.gate_in = Utils.point(0.0, side * 0.5 + IN_GATE, neg_y, swap);
         Point gate_out = Utils.point(0.0, side * 0.5 - FROM_GATE, neg_y, swap);
-        
-        pos_state = new int[numPipers];
+
+        pos_state = new PiperState[numPipers];
         for (int i = 0; i < pos_state.length; ++i)
-            pos_state[i] = AT_GATE;
+            pos_state[i] = PiperState.AT_GATE;
 
         this.movesQueue = new ArrayList<ArrayList<PiperDest>>(numPipers);
         for (int i = 0; i < numPipers; ++i) {
@@ -68,7 +62,7 @@ public class Player implements pppp.sim.Player {
 
         // Initialize the grid of cells
         this.grid = new Grid(side, GRID_CELLSIZE);
-        
+
         ticks = 0;
     }
 
@@ -122,7 +116,7 @@ public class Player implements pppp.sim.Player {
         for (Cell cell : cells) {
             sum_weights += cell.weight;
         }
-        
+
         int n_idle = idle_pipers.size();
 
         // Cicles through the highest rated cell first and downwards.
@@ -149,11 +143,12 @@ public class Player implements pppp.sim.Player {
                     dists[piper_id] = Double.MAX_VALUE;
             }
 
-            // Get the n closest pipers to the cell i.
-            double nth_smallest = Utils.quickSelect(dists, pipers2cell);
-            // Send pipers towards cell i
+            // Find the distance of the nth closest cell
+            double nth_closest = Utils.quickSelect(dists, pipers2cell);
+
+            // Send pipers towards the cell
             for (int i = 0; i < pipers[id].length; ++i)
-                if (dists[i] <= nth_smallest && dists[i] != Double.MAX_VALUE) {
+                if (dists[i] <= nth_closest && dists[i] != Double.MAX_VALUE) {
                     // Send piper to this cell, while not playing music
                     double dist = Utils.distance(cell.center, movesQueue.get(i).get(1).point);
                     int n_rats = numRatsInRange(pipers[id][i], rats, PLAY_RAD);
@@ -163,7 +158,7 @@ public class Player implements pppp.sim.Player {
                     idle_pipers.remove((Integer) i);
 
                     if (dists[i] > 20 && n_rats < 3) {
-                        pos_state[i] = TO_GOAL;
+                        pos_state[i] = PiperState.TO_GOAL;
                     }
                 }
         }
@@ -260,13 +255,13 @@ public class Player implements pppp.sim.Player {
 
                 // Piper is outside in the field and returning with zero rats
                 // then send it to look for more
-                if (pos_state[piper_id] == TO_GATE)
-                    pos_state[piper_id] = TO_GOAL;
+                if (pos_state[piper_id] == PiperState.TO_GATE)
+                    pos_state[piper_id] = PiperState.TO_GOAL;
 
                 // Piper is going through gate with zero rats
                 // then send it out of gate
-                if (pos_state[piper_id] == UNLOAD)
-                    pos_state[piper_id] = AT_GATE;
+                if (pos_state[piper_id] == PiperState.UNLOAD)
+                    pos_state[piper_id] = PiperState.AT_GATE;
             }
         }
     }
@@ -285,7 +280,7 @@ public class Player implements pppp.sim.Player {
         }
         return numRats;
     }
-    
+
     // return next locations on last argument
     public void play(
             Point[][] pipers, boolean[][] pipers_played, Point[] rats,
@@ -294,14 +289,14 @@ public class Player implements pppp.sim.Player {
     	++ticks;
     	//if(ticks%30 == 0) System.out.println(grid);
         ensureReturningPipersHaveRats(pipers[id], rats);
-        grid.updateCellWeights(pipers, pipers_played, rats);
+        grid.updateCellWeights(pipers, pipers_played, rats, id);
 
         ArrayList<Integer> idle_pipers = new ArrayList<Integer>();
         // Consider the "active duty" pipers that are not currently in base
         // They are either moving towards rats or herding them back (in this
         // case they change tactics rarely)
         for (int i = 0; i < pipers[id].length; ++i) {
-            if (pos_state[i] == TO_GOAL || pos_state[i] == TO_GATE) {
+            if (pos_state[i] == PiperState.TO_GOAL || pos_state[i] == PiperState.TO_GATE) {
                 idle_pipers.add(i);
             }
         }
@@ -318,28 +313,28 @@ public class Player implements pppp.sim.Player {
 
         for (int piper_id = 0; piper_id < pipers[id].length; piper_id++) {
             Point src = pipers[id][piper_id];
-            PiperDest trg = movesQueue.get(piper_id).get(pos_state[piper_id]);
-            
+            PiperDest target = movesQueue.get(piper_id).get(pos_state[piper_id].ordinal());
+
             double EPSILON = GATE_EPSILON;
-            if (pos_state[piper_id] == TO_GOAL)
+            if (pos_state[piper_id] == PiperState.TO_GOAL)
                 EPSILON = RAT_EPSILON;
 
-            if (Utils.isAtDest(src, trg.point, EPSILON)) {
+            if (Utils.isAtDest(src, target.point, EPSILON)) {
                 // Progress the movement to the next step.
-                pos_state[piper_id] = (pos_state[piper_id] + 1) % 4;
+                pos_state[piper_id] = pos_state[piper_id].nextState();
                 // If we're in base and more rats are still around, wait for them to get in!
-                if (pos_state[piper_id] == AT_GATE && numRatsInRange(src, rats, PLAY_RAD) > 0)
-                	pos_state[piper_id] = UNLOAD;
+                if (pos_state[piper_id] == PiperState.AT_GATE && numRatsInRange(src, rats, PLAY_RAD) > 0)
+                	pos_state[piper_id] = PiperState.UNLOAD;
                 // Assign next destination.
-                trg = movesQueue.get(piper_id).get(pos_state[piper_id]);
+                target = movesQueue.get(piper_id).get(pos_state[piper_id].ordinal());
             }
             
             // If destination is null then stay in same position
-            if (trg.point == null) {
-                trg.point = src;
+            if (target.point == null) {
+                target.point = src;
             }
             
-            moves[piper_id] = Utils.creatMove(src, trg.point, trg.play);
+            moves[piper_id] = Utils.creatMove(src, target.point, target.play);
         }
     }
 }
