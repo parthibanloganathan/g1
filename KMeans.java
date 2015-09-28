@@ -43,6 +43,16 @@ public class KMeans {
             clusters.add(cluster);
         }
     }
+    
+    public double getClustersAverageRadius() {
+    	int n_points = 0;
+    	double distance = 0;
+    	for(Cluster cluster : clusters) {
+    		distance += cluster.getClusterPointsDistance();
+    		n_points += cluster.points.size();
+    	}
+    	return distance/n_points;
+    }
 
 //    private void plotClusters() {
 //        for (int i = 0; i & lt; NUM_CLUSTERS; i++){

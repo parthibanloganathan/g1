@@ -47,6 +47,14 @@ public class Cluster implements Comparable<Cluster> {
     public void clear() {
         points.clear();
     }
+    
+    public double getClusterPointsDistance() {
+    	double radius = 0;
+    	for(Point p : points) {
+    		radius += Utils.distance(centroid, p);
+    	}
+    	return radius;
+    }
 
     @Override
     public Cluster clone() {

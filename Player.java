@@ -96,7 +96,7 @@ public class Player implements pppp.sim.Player {
         while (clustIter.hasNext()) {
             Cluster clust = clustIter.next();
             // Discard cells that don't have high weight or are close by
-            if (clust.weight <= 2 * avg_weight ||
+            if (clust.weight <= 1.3 * avg_weight ||
                     Utils.distance(clust.centroid, this.gate) < 20) {
                 clustIter.remove();
             }
@@ -154,9 +154,7 @@ public class Player implements pppp.sim.Player {
                     // Send piper to this cell, while not playing music
                     double dist = Utils.distance(cluster.centroid, movesQueue.get(i).get(1).point);
                     int n_rats = numRatsInRange(pipers[id][i], rats, PLAY_RAD);
-                    if (n_rats < 3) {
-                        updateGoal(i, cluster.centroid, false);
-                    }
+                    updateGoal(i, cluster.centroid, false);
                     idle_pipers.remove((Integer) i);
 
                     if (dists[i] > 20 && n_rats < 3) {
@@ -224,13 +222,8 @@ public class Player implements pppp.sim.Player {
                         }
                     }
                 }
-                // If all rats are within 10m of gate just sit inside gate
-                // and play music
-                if (closest_rat_pos == null) {
-                    stayInBase(piper);
-                } else {
-                    updateGoal(piper, closest_rat_pos, false);
-                }
+                
+                updateGoal(piper, closest_rat_pos, false);
                 iter.remove();
             }
         }
@@ -254,10 +247,9 @@ public class Player implements pppp.sim.Player {
     void ensureReturningPipersHaveRats(Point[] pipers, Point[] rats) {
         // See if pipers are going back without rats; if so correct them.
         for (int piper_id = 0; piper_id < pipers.length; ++piper_id) {
-            double radius = PLAY_RAD;
-            if (rats.length < pipers.length) {
-                radius = 5;
-            }
+        	double radius = PLAY_RAD;
+        	if(rats.length < pipers.length)
+        		radius = 2.5;
             if (numRatsInRange(pipers[piper_id], rats, radius) == 0) {
 
                 // Piper is outside in the field and returning with zero rats
@@ -293,10 +285,14 @@ public class Player implements pppp.sim.Player {
             Point[][] pipers, boolean[][] pipers_played, Point[] rats,
             Move[] moves
     ) {
-        grid.init(rats, 10);
-
-        ensureReturningPipersHaveRats(pipers[id], rats);
-        grid.updateClusterWeights(pipers, pipers_played, rats);
+    	ensureReturningPipersHaveRats(pipers[id], rats);
+        
+    	int n_clusters = 2;
+    	do {
+    		grid.init(rats, n_clusters++);
+    		grid.calculate();
+    		grid.updateClusterWeights(pipers, pipers_played, rats);
+    	} while(grid.getClustersAverageRadius() > 5);
 
         ArrayList<Integer> idle_pipers = new ArrayList<Integer>();
         // Consider the "active duty" pipers that are not currently in base
@@ -330,13 +326,25 @@ public class Player implements pppp.sim.Player {
             double EPSILON = GATE_EPSILON;
             if (pos_state[piper_id] == TO_GOAL)
                 EPSILON = RAT_EPSILON;
+            
+            
 
             if (Utils.isAtDest(src, trg.point, EPSILON)) {
                 // Progress the movement to the next step.
                 pos_state[piper_id] = (pos_state[piper_id] + 1) % 4;
+                
+                // If we're in base and more rats are still around, wait for them to get in!
+                if (pos_state[piper_id] == AT_GATE && numRatsInRange(src, rats, PLAY_RAD) > 0)
+                	pos_state[piper_id] = UNLOAD;
+
                 // Assign next destination.
                 trg = movesQueue.get(piper_id).get(pos_state[piper_id]);
             }
+            
+            if (trg.point == null) {
+                trg.point = src;
+            }
+            
             moves[piper_id] = Utils.creatMove(src, trg.point, trg.play);
         }
     }
