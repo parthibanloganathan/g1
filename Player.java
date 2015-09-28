@@ -194,7 +194,7 @@ public class Player implements pppp.sim.Player {
      * @param rats
      * @param pipers
      */
-    void assignGoalByRatDistance(
+    void assignGoalsSparseCase(
             ArrayList<Integer> unassigned_pipers, Point[] rats,
             Point[][] pipers
     ) {
@@ -221,7 +221,7 @@ public class Player implements pppp.sim.Player {
                 ArrayList<Integer> nClosestPipers =
                         getIdsOfOurNClosestPipers(num_pipers_needed, rats[i], pipers[id], unassigned_pipers);
 
-                for (int closePiper : nClosestPipers) {
+                for (Integer closePiper : nClosestPipers) {
                     // Piper is now assigned, remove from unassigned list
                     unassigned_pipers.remove(closePiper);
                     // Send piper to goal
@@ -277,7 +277,7 @@ public class Player implements pppp.sim.Player {
             }
         }
 
-        while (n > 0) {
+        while (n > 0 && nClosestPipers.size() > 0) {
             nClosestPipers.add(closestPipers.poll().id);
             n--;
         }
@@ -307,11 +307,10 @@ public class Player implements pppp.sim.Player {
     void ensureReturningPipersHaveRats(Point[] pipers, Point[] rats) {
         // See if pipers are going back without rats; if so correct them.
         for (int piper_id = 0; piper_id < pipers.length; ++piper_id) {
-        	double radius = PLAY_RAD;
+        	double radius = PLAY_RAD - 0.5;
         	if(rats.length < pipers.length)
         		radius = INFLUENCE_MIN_DIS + 0.5;
             if (numRatsInRange(pipers[piper_id], rats, radius) == 0) {
-
                 // Piper is outside in the field and returning with zero rats
                 // then send it to look for more
                 if (piper_states[piper_id] == PiperState.TO_GATE)
@@ -367,7 +366,7 @@ public class Player implements pppp.sim.Player {
         // will have ONLY unassigned pipers. I'm also expecting a small
         // number of unassigned pipers dense maps.
         if (idle_pipers.size() > 0) {
-            assignGoalByRatDistance(idle_pipers, rats, pipers);
+            assignGoalsSparseCase(idle_pipers, rats, pipers);
         }
 
         for (int piper_id = 0; piper_id < pipers[id].length; piper_id++) {
@@ -375,8 +374,9 @@ public class Player implements pppp.sim.Player {
             PiperDest target = movesQueue.get(piper_id).get(piper_states[piper_id].ordinal());
 
             double EPSILON = GATE_EPSILON;
-            if (piper_states[piper_id] == PiperState.TO_GOAL)
+            if (piper_states[piper_id] == PiperState.TO_GOAL) {
                 EPSILON = RAT_EPSILON;
+            }
 
             if (Utils.isAtDest(src, target.point, EPSILON)) {
                 // Progress the movement to the next step.
