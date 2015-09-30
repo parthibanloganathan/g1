@@ -315,10 +315,12 @@ public class Player implements pppp.sim.Player {
      */
     private static int removeRatsInRange(Point piper, HashSet<Point> rats, double range) {
         int numRats = 0;
-        for (Point rat : rats) {
+        Iterator<Point> ratIter = rats.iterator();
+        while (ratIter.hasNext()) {
+        	Point rat = ratIter.next();
         	if(Utils.distance(piper, rat) <= range) {
         		++numRats;
-        		rats.remove(rat);
+        		ratIter.remove();
         	}
         }
         return numRats;
@@ -332,7 +334,7 @@ public class Player implements pppp.sim.Player {
     	++ticks;
     	//if(ticks%30 == 0) System.out.println(grid);
         ensureReturningPipersHaveRats(pipers[id], rats);
-        //if(rats.length > SPARSE_THRESH) ensureReturningPipersCarryingUniqueRats(pipers[id], rats);
+        if(rats.length > SPARSE_THRESH) ensureReturningPipersCarryingUniqueRats(pipers[id], rats);
         
         grid.updateCellWeights(pipers, pipers_played, rats);
 
