@@ -18,6 +18,8 @@ public class Player implements pppp.sim.Player {
     final int TO_GOAL = 1;
     final int TO_GATE = 2;
     final int UNLOAD = 3;
+    
+    final int SPARSE_THRESH = 50;
 
     final int PLAY_RAD = 10;
     final int GRID_CELLSIZE = 20;
@@ -252,7 +254,7 @@ public class Player implements pppp.sim.Player {
     void ensureReturningPipersHaveRats(Point[] pipers, Point[] rats) {
         // See if pipers are going back without rats; if so correct them.
         for (int piper_id = 0; piper_id < pipers.length; ++piper_id) {
-        	double radius = PLAY_RAD;
+        	double radius = PLAY_RAD/2;
         	if(rats.length < pipers.length)
         		radius = 2.5;
             if (numRatsInRange(pipers[piper_id], rats, radius) == 0) {
@@ -269,6 +271,24 @@ public class Player implements pppp.sim.Player {
             }
         }
     }
+    
+    void ensureReturningPipersCarryingUniqueRats(Point[] pipers, Point[] rats) {
+    	HashSet<Point> ratsLeft = new HashSet<Point>();
+    	for(Point rat : rats)
+    		ratsLeft.add(rat);
+    	for(int piper_id = 0; piper_id < pipers.length; ++piper_id) {
+    		if(pos_state[piper_id] == TO_GATE) {
+    			if(removeRatsInRange(pipers[piper_id], ratsLeft, PLAY_RAD) == 0) {
+    				pos_state[piper_id] = TO_GOAL;
+    			}
+    		}
+    		if(pos_state[piper_id] == UNLOAD) {
+    			if(removeRatsInRange(pipers[piper_id], ratsLeft, PLAY_RAD) == 0) {
+    				pos_state[piper_id] = AT_GATE;
+    			}
+    		}
+    	}
+    }
 
     /**
      * Number of rats within specified range from the piper.
@@ -284,6 +304,25 @@ public class Player implements pppp.sim.Player {
         }
         return numRats;
     }
+
+    /**
+     * Returns number of rats within specified range from the piper.
+     * Also removes rats from the ArrayList
+     *
+     * @param piper The position of a piper.
+     * @param rats  The positions of all the rats.
+     * @param range The music play radius around the piper.
+     */
+    private static int removeRatsInRange(Point piper, HashSet<Point> rats, double range) {
+        int numRats = 0;
+        for (Point rat : rats) {
+        	if(Utils.distance(piper, rat) <= range) {
+        		++numRats;
+        		rats.remove(rat);
+        	}
+        }
+        return numRats;
+    }
     
     // return next locations on last argument
     public void play(
@@ -293,6 +332,8 @@ public class Player implements pppp.sim.Player {
     	++ticks;
     	//if(ticks%30 == 0) System.out.println(grid);
         ensureReturningPipersHaveRats(pipers[id], rats);
+        //if(rats.length > SPARSE_THRESH) ensureReturningPipersCarryingUniqueRats(pipers[id], rats);
+        
         grid.updateCellWeights(pipers, pipers_played, rats);
 
         ArrayList<Integer> idle_pipers = new ArrayList<Integer>();
@@ -323,6 +364,10 @@ public class Player implements pppp.sim.Player {
             if (pos_state[piper_id] == TO_GOAL)
                 EPSILON = RAT_EPSILON;
 
+            if (trg.point == null) {
+                trg.point = src;
+            }
+            
             if (Utils.isAtDest(src, trg.point, EPSILON)) {
                 // Progress the movement to the next step.
                 pos_state[piper_id] = (pos_state[piper_id] + 1) % 4;
