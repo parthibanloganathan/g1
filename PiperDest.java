@@ -9,9 +9,11 @@ import pppp.sim.Point;
 public class PiperDest {
     public Point point;
     public boolean play;
+    public boolean override;
 
-    public PiperDest(Point point, boolean play) {
+    public PiperDest(Point point, boolean play, boolean override) {
         this.point = point;
         this.play = play;
+        this.override = override;
     }
 }

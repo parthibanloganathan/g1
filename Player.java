@@ -56,13 +56,13 @@ public class Player implements pppp.sim.Player {
         for (int i = 0; i < pos_state.length; ++i)
             pos_state[i] = AT_GATE;
 
-        this.movesQueue = new ArrayList<ArrayList<PiperDest>>(numPipers);
+        this.movesQueue = new ArrayList<>(numPipers);
         for (int i = 0; i < numPipers; ++i) {
-            ArrayList<PiperDest> inner = new ArrayList<PiperDest>();
-            inner.add(new PiperDest(this.gate, false));
-            inner.add(new PiperDest(new Point(0, 0), false));  // Placeholder
-            inner.add(new PiperDest(gate_out, true));
-            inner.add(new PiperDest(gate_in, true));
+            ArrayList<PiperDest> inner = new ArrayList<>();
+            inner.add(new PiperDest(this.gate, false, false));
+            inner.add(new PiperDest(new Point(0, 0), false, true));  // Placeholder
+            inner.add(new PiperDest(gate_out, true, false));
+            inner.add(new PiperDest(gate_in, true, false));
             movesQueue.add(inner);
         }
 
@@ -72,19 +72,21 @@ public class Player implements pppp.sim.Player {
         ticks = 0;
     }
 
-    void updateGoal(int piperNum, Point newGoal, boolean playMusic) {
-        movesQueue.get(piperNum).set(1, new PiperDest(newGoal, playMusic));
+    void updateGoal(int piperNum, Point newGoal, boolean playMusic, boolean override) {
+        if (movesQueue.get(piperNum).get(1).override) {
+            movesQueue.get(piperNum).set(1, new PiperDest(newGoal, playMusic, override));
+        }
     }
 
     void stayInBase(int piperNum) {
-        PiperDest pw = new PiperDest(gate_in, true);
+        PiperDest pw = new PiperDest(gate_in, true, true);
         for (int i = 0; i < movesQueue.get(piperNum).size(); ++i) {
             movesQueue.get(piperNum).set(i, pw);
         }
     }
 
     Queue<Cell> getImportantCells(Grid grid, Point[] rats) {
-        Queue<Cell> cells = new PriorityQueue<Cell>();
+        Queue<Cell> cells = new PriorityQueue<>();
         for (Cell[] row : grid.grid) {
             Collections.addAll(cells, row);
         }
@@ -122,11 +124,11 @@ public class Player implements pppp.sim.Player {
         for (Cell cell : cells) {
             sum_weights += cell.weight;
         }
-        
+
         int n_idle = idle_pipers.size();
 
         // Cicles through the highest rated cell first and downwards.
-        while (!cells.isEmpty()) {
+        while (cells.size() != 0) {
         	Cell cell = cells.poll();
             if (sum_weights == 0 || idle_pipers.size() == 0 || cell.weight <= 1)
                 break;
@@ -155,11 +157,8 @@ public class Player implements pppp.sim.Player {
             for (int i = 0; i < pipers[id].length; ++i)
                 if (dists[i] <= nth_smallest && dists[i] != Double.MAX_VALUE) {
                     // Send piper to this cell, while not playing music
-                    double dist = Utils.distance(cell.center, movesQueue.get(i).get(1).point);
                     int n_rats = numRatsInRange(pipers[id][i], rats, PLAY_RAD);
-                    if (dist < 2 * grid.cellSize) {
-                        updateGoal(i, cell.center, false);
-                    }
+                    updateGoal(i, cell.center, false, true);
                     idle_pipers.remove((Integer) i);
 
                     if (dists[i] > 20 && n_rats < 3) {
@@ -204,7 +203,7 @@ public class Player implements pppp.sim.Player {
 
                 // Piper is now assigned, remove from unassigned list
                 unassigned_pipers.remove(closest_piper);
-                updateGoal(closest_piper, rats[i], false);
+                updateGoal(closest_piper, rats[i], false, false);
                 if (unassigned_pipers.size() == 0) return;
             }
 
@@ -229,7 +228,7 @@ public class Player implements pppp.sim.Player {
                 }
                 // If all rats are within 10m of gate just sit inside gate
                 // and play music
-                updateGoal(piper, closest_rat_pos, false);
+                updateGoal(piper, closest_rat_pos, false, false);
                 iter.remove();
             }
         }
@@ -327,6 +326,7 @@ public class Player implements pppp.sim.Player {
             if (Utils.isAtDest(src, trg.point, EPSILON)) {
                 // Progress the movement to the next step.
                 pos_state[piper_id] = (pos_state[piper_id] + 1) % 4;
+                movesQueue.get(piper_id).get(1).override = true;
                 // If we're in base and more rats are still around, wait for them to get in!
                 if (pos_state[piper_id] == AT_GATE && numRatsInRange(src, rats, PLAY_RAD) > 0)
                 	pos_state[piper_id] = UNLOAD;
